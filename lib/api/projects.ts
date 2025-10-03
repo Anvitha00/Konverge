@@ -9,54 +9,21 @@ export async function getProjects(
   limit = 10,
   userId?: string
 ): Promise<Paginated<Project>> {
-  // Mock implementation - replace with real API calls
-  let filteredProjects = [...mockProjects];
-  
-  // Filter by view type
+  // Real API call
+  let url = `/api/projects?view=${filters?.view || 'pitching'}`;
   if (filters?.view === 'matching' && userId) {
-    // For matching view, show projects where user has matches or applied
-    filteredProjects = filteredProjects.filter(p => 
-      p.applicants.some(app => app.userId === userId) ||
-      mockMatches.some(m => m.userId === userId && m.projectId === p.id)
-    );
-  } else if (filters?.view === 'pitching') {
-    // For pitching view, show all projects
-    filteredProjects = filteredProjects.filter(p => p.status === 'pitching' || p.status === 'matching');
+    url += `&userId=${userId}`;
   }
-  
-  if (filters?.search) {
-    const search = filters.search.toLowerCase();
-    filteredProjects = filteredProjects.filter(
-      p => p.title.toLowerCase().includes(search) ||
-           p.description.toLowerCase().includes(search)
-    );
-  }
-  
-  if (filters?.skills?.length) {
-    filteredProjects = filteredProjects.filter(
-      p => filters.skills!.some(skill => 
-        p.techStack.some(tech => tech.toLowerCase().includes(skill.toLowerCase()))
-      )
-    );
-  }
-  
-  if (filters?.status?.length) {
-    filteredProjects = filteredProjects.filter(
-      p => filters.status!.includes(p.status)
-    );
-  }
-  
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
-  const paginatedData = filteredProjects.slice(startIndex, endIndex);
-  
+  const res = await fetch(url);
+  const data = await res.json();
+  // Return in expected format
   return {
-    data: paginatedData,
+    data: data.projects,
     pagination: {
       page,
       limit,
-      total: filteredProjects.length,
-      totalPages: Math.ceil(filteredProjects.length / limit),
+      total: data.projects.length,
+      totalPages: 1,
     },
   };
 }
