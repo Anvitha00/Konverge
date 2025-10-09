@@ -1,19 +1,47 @@
+// Database types that match your PostgreSQL schema
+export interface DbUser {
+  user_id: number;
+  name: string;
+  email: string;
+  skills: string[];
+  bio?: string;
+  github?: string;
+  linkedin?: string;
+  rating?: number;
+  engagement_score?: number;
+}
+
+export interface DbProject {
+  project_id: number;
+  title: string;
+  description: string;
+  required_skills: string[];
+  owner_id: number;
+  status: string;
+}
+
+// Frontend types (your existing types)
 export interface User {
   id: string;
   email: string;
   name: string;
   avatar?: string;
   skills: string[];
-  availability: 'available' | 'busy' | 'away';
+  availability?: 'available' | 'busy' | 'away';
   bio?: string;
   links?: {
     github?: string;
     linkedin?: string;
     portfolio?: string;
   };
-  badges: Badge[];
-  points: number;
-  joinedAt: Date;
+  badges?: Badge[];
+  points?: number;
+  joinedAt?: Date;
+  
+  // Add database compatibility
+  user_id?: number; // ✅ Add this for database operations
+  rating?: number;
+  engagement_score?: number;
 }
 
 export interface Profile extends User {
@@ -26,25 +54,30 @@ export interface Project {
   id: string;
   title: string;
   description: string;
-  problem: string;
-  goals: string[];
+  problem?: string;
+  goals?: string[];
   techStack: string[];
   status: 'pitching' | 'matching' | 'in-progress' | 'completed';
   authorId: string;
-  author: User;
-  roles: RoleRequirement[];
-  collaborators: User[];
-  applicants: Array<{
+  author?: User;
+  roles?: RoleRequirement[];
+  collaborators?: User[];
+  applicants?: Array<{
     userId: string;
     user: User;
     roleId: string;
     status: 'pending' | 'accepted' | 'rejected';
     appliedAt: Date;
   }>;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
   deadline?: Date;
-  commitment: 'part-time' | 'full-time' | 'weekend' | 'flexible';
+  commitment?: 'part-time' | 'full-time' | 'weekend' | 'flexible';
+  
+  // Add database compatibility
+  project_id?: number;
+  owner_id?: number;
+  required_skills?: string[];
 }
 
 export interface RoleRequirement {

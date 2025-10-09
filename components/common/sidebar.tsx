@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 const sidebarItems = [
   { href: "/projects", label: "Discover", icon: Search },
-  { href: "/projects/new", label: "Pitch Project", icon: Plus },
+  { href: "/projects/pitch", label: "Pitch Project", icon: Plus },
   { href: "/chat", label: "Messages", icon: MessageCircle },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/profile", label: "Profile", icon: User },

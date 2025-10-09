@@ -1,161 +1,104 @@
-"use client";
-
-import Link from "next/link";
-import {
-  Calendar,
-  Clock,
-  Users,
-  MessageCircle,
-  MessageSquare,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
+// components/projects/project-card.tsx
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import type { Project } from "@/types";
-import { formatRelativeTime, getInitials, truncate } from "@/lib/utils";
-import { useAuthStore } from "@/store/auth-store";
+import { Card, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Clock, Users } from "lucide-react";
+import { formatProjectDate } from "@/lib/utils/date";
 
 interface ProjectCardProps {
-  project: Project;
-  viewType?: "pitching" | "matching";
+  project: {
+    project_id: number;
+    title: string;
+    description: string;
+    required_skills: string[];
+    status: string;
+    owner_name?: string;
+    owner_email?: string;
+    roles_available?: number;
+    created_at?: string | Date;
+  };
+  onDiscussClick?: () => void;
 }
 
-export function ProjectCard({ project, viewType }: ProjectCardProps) {
-  const availableRoles = (project.roles ?? []).filter((role) => !role.filled);
-  const { user } = useAuthStore();
-
-  const handleDiscussionClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    // TODO: Open discussion modal or navigate to discussion page
-    console.log("Open discussion for project:", project.id);
+export function ProjectCard({ project, onDiscussClick }: ProjectCardProps) {
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; variant: any }> = {
+      Open: { label: "Open", variant: "default" },
+      "In Progress": { label: "In Progress", variant: "secondary" },
+      Completed: { label: "Completed", variant: "outline" },
+    };
+    return statusMap[status] || { label: status, variant: "secondary" };
   };
 
-  const handleChatClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    // TODO: Open chat with project owner
-    console.log("Open chat with project owner:", project.author.id);
-  };
+  const statusBadge = getStatusBadge(project.status);
+  const rolesOpen = project.roles_available ?? 0;
+  const projectDate = formatProjectDate(project.created_at);
 
   return (
-    <Card className="group hover:shadow-md transition-shadow duration-200">
-      <CardHeader className="space-y-3">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <Link
-              href={`/projects/${project.id}`}
-              className="block text-lg font-semibold leading-tight group-hover:text-primary transition-colors"
-            >
-              {project.title}
-            </Link>
-            <p className="text-sm text-muted-foreground">
-              {truncate(project.description, 120)}
+    <Card className="hover:shadow-md transition-shadow">
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="text-lg font-semibold">{project.title}</h3>
+              <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+              {project.description}
             </p>
           </div>
-          <Badge
-            variant={
-              project.status === "pitching"
-                ? "default"
-                : project.status === "matching"
-                ? "secondary"
-                : project.status === "in-progress"
-                ? "outline"
-                : "secondary"
-            }
-          >
-            {project.status.replace("-", " ")}
-          </Badge>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Avatar className="h-6 w-6">
-            <AvatarImage
-              src={project.owner_avatar ?? ""}
-              alt={project.owner_name ?? ""}
-            />
-            <AvatarFallback>
-              {getInitials(project.owner_name ?? "")}
-            </AvatarFallback>
-          </Avatar>
-          <span className="text-sm text-muted-foreground">
-            {project.owner_name ?? ""}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {formatRelativeTime(project.createdAt)}
-          </span>
-        </div>
-      </CardHeader>
+        {/* Owner info */}
+        {project.owner_name && (
+          <div className="flex items-center gap-2 mb-3">
+            <Avatar className="h-6 w-6">
+              <AvatarFallback className="text-xs">
+                {project.owner_name.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <span className="text-sm text-muted-foreground">
+              {project.owner_name}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              • {projectDate}
+            </span>
+          </div>
+        )}
 
-      <CardContent className="space-y-4">
-        <div>
-          <div className="flex flex-wrap gap-1 mb-2">
-            {(project.techStack ?? []).slice(0, 4).map((tech) => (
-              <Badge key={tech} variant="outline" className="text-xs">
-                {tech}
+        {/* Skills */}
+        {project.required_skills && project.required_skills.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {project.required_skills.slice(0, 4).map((skill, index) => (
+              <Badge key={index} variant="outline" className="text-xs">
+                {skill}
               </Badge>
             ))}
-            {(project.techStack ?? []).length > 4 && (
+            {project.required_skills.length > 4 && (
               <Badge variant="outline" className="text-xs">
-                +{(project.techStack ?? []).length - 4}
+                +{project.required_skills.length - 4} more
               </Badge>
             )}
           </div>
-        </div>
-
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Clock className="h-4 w-4" />
-            <span className="capitalize">
-              {(project.commitment ?? "").replace("-", " ")}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Users className="h-4 w-4" />
-            <span>
-              {availableRoles.length} role
-              {availableRoles.length !== 1 ? "s" : ""} open
-            </span>
-          </div>
-        </div>
-
-        {project.deadline && (
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <Calendar className="h-4 w-4" />
-            <span>Due {formatRelativeTime(project.deadline)}</span>
-          </div>
         )}
-      </CardContent>
 
-      <CardFooter className="pt-0">
-        <div className="flex gap-2 w-full">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDiscussionClick}
-            className="flex-1 gap-1"
-          >
-            <MessageSquare className="h-4 w-4" />
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-3 border-t">
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Users className="h-4 w-4" />
+              <span>
+                {rolesOpen} {rolesOpen === 1 ? "role" : "roles"} open
+              </span>
+            </div>
+          </div>
+
+          <Button variant="outline" size="sm" onClick={onDiscussClick}>
             Discussion
           </Button>
-
-          {viewType === "matching" && project.owner_id !== user?.id && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleChatClick}
-              className="flex-1 gap-1"
-            >
-              <MessageCircle className="h-4 w-4" />
-              Chat Owner
-            </Button>
-          )}
         </div>
-      </CardFooter>
+      </CardContent>
     </Card>
   );
 }
