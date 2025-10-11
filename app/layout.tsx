@@ -5,8 +5,8 @@ import { Inter } from "next/font/google";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "@/components/common/app-shell";
 import { useAuthStore } from "@/store/auth-store";
-import { mockUsers } from "@/lib/api/mock-data";
 import { useEffect, useState } from "react";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,14 +21,12 @@ const queryClient = new QueryClient({
 });
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { setUser } = useAuthStore();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    // Mock authentication - set the first user as logged in
-    setUser(mockUsers[0]);
-  }, [setUser]);
+    // Don't auto-set any user - let login/register handle it!
+  }, []);
 
   if (!mounted) {
     return null;
@@ -42,19 +40,23 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Show AppShell (side/top navbars) only if user is authenticated
   const { isAuthenticated } = useAuthStore();
+
+  // Check if we're on an auth page
   const isAuthPage =
     typeof window !== "undefined" &&
     (window.location.pathname === "/" ||
       window.location.pathname.startsWith("/auth"));
+
   const showAppShell = isAuthenticated && !isAuthPage;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             {showAppShell ? <AppShell>{children}</AppShell> : children}
+            <Toaster position="top-right" />
           </AuthProvider>
         </QueryClientProvider>
       </body>

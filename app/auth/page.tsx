@@ -2,42 +2,61 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import Link from "next/link";
 
 export default function AuthPage() {
   const [input, setInput] = useState("");
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { setUser } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!input.trim()) {
-      setError("Please enter your UserID or Email.");
+      toast.error("Please enter your email");
       return;
     }
+
     const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input);
     if (!isEmail) {
-      setError("Enter a valid email address.");
+      toast.error("Enter a valid email address");
       return;
     }
-    setError("");
+
+    setLoading(true);
+
     try {
       const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: input })
+        body: JSON.stringify({ email: input }),
       });
+
       const data = await res.json();
+
       if (!res.ok) {
-        setError(data.error || "Login failed.");
+        toast.error(data.error || "Login failed");
+        setLoading(false);
         return;
       }
-      // Save user to localStorage or context if needed
-      // Redirect to discover page
+
+      // Save user to auth store
+      setUser(data.user);
+
+      toast.success("Login successful!");
+
+      // Redirect to projects page
       router.push("/projects");
     } catch (err) {
-      setError("Server error. Please try again later.");
+      console.error("Login error:", err);
+      toast.error("Server error. Please try again later");
+      setLoading(false);
     }
   };
 
@@ -45,27 +64,49 @@ export default function AuthPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/20">
       <Card className="w-full max-w-md">
         <CardContent className="p-8">
-          <h1 className="text-2xl font-bold mb-6 text-center">
-            Login to Konverge
-          </h1>
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <input
-              type="text"
-              placeholder="UserID or Email"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              className="border rounded px-4 py-2 focus:outline-none focus:ring focus:border-primary"
-              autoFocus
-            />
-            {error && <div className="text-red-500 text-sm">{error}</div>}
-            <Button type="submit" size="lg" className="w-full">
-              Login
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold mb-2">Login to Konverge</h1>
+            <p className="text-muted-foreground text-sm">
+              Enter your email to access your account
+            </p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium">
+                Email Address
+              </label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="your@email.com"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={loading}
+                autoFocus
+              />
+            </div>
+
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              disabled={loading}
+            >
+              {loading ? "Logging in..." : "Login"}
             </Button>
           </form>
-          <div className="mt-4 text-center">
-            <a href="/auth/register" className="text-primary hover:underline">
-              Don't have an account? Register
-            </a>
+
+          <div className="mt-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <Link
+                href="/auth/register"
+                className="text-primary hover:underline font-medium"
+              >
+                Register
+              </Link>
+            </p>
           </div>
         </CardContent>
       </Card>
