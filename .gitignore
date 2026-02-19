@@ -35,3 +35,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 init_db.sql
+
+# Python virtualenv
+venv/
+.venv/
+
+# Python cache
+**/__pycache__/
+*.py[cod]
+
+
+
+
