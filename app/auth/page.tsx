@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/store/auth-store";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,52 +10,51 @@ import { toast } from "sonner";
 import Link from "next/link";
 
 export default function AuthPage() {
-  const [input, setInput] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { setUser } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!input.trim()) {
+    if (!email.trim()) {
       toast.error("Please enter your email");
       return;
     }
 
-    const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input);
+    const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
     if (!isEmail) {
       toast.error("Enter a valid email address");
+      return;
+    }
+
+    if (!password.trim()) {
+      toast.error("Please enter your password");
       return;
     }
 
     setLoading(true);
 
     try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: input }),
+      const res = await signIn("credentials", {
+        redirect: false,
+        email: email.trim(),
+        password,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        toast.error(data.error || "Login failed");
-        setLoading(false);
+      if (res?.error) {
+        toast.error(res.error || "Login failed");
         return;
       }
 
-      // Save user to auth store
-      setUser(data.user);
-
       toast.success("Login successful!");
-
-      // Redirect to projects page
       router.push("/projects");
+      router.refresh();
     } catch (err) {
       console.error("Login error:", err);
       toast.error("Server error. Please try again later");
+    } finally {
       setLoading(false);
     }
   };
@@ -80,10 +79,24 @@ export default function AuthPage() {
                 id="email"
                 type="email"
                 placeholder="your@email.com"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
                 autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium">
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
               />
             </div>
 

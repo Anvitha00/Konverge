@@ -175,7 +175,7 @@ export default function LeaderboardPage() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm">👑 Legendary</span>
-                <Badge className="bg-gradient-to-r from-purple-500 to-pink-500">
+                <Badge className="bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-400 text-white">
                   Elite status
                 </Badge>
               </div>

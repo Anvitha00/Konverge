@@ -1,6 +1,8 @@
 "use client";
 
 import { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+
 import { useAuthStore } from "@/store/auth-store";
 import { Navbar } from "./navbar";
 import { Sidebar } from "./sidebar";
@@ -12,11 +14,17 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const { isAuthenticated } = useAuthStore();
+  const pathname = usePathname();
 
-  // Hide sidebar only on landing page
-  const isLandingPage = typeof window !== 'undefined' && window.location.pathname === '/';
-  if (!isAuthenticated || isLandingPage) {
-    return <>{children}</>;
+  const isLandingPage = pathname === "/";
+  const isAuthRoute = pathname?.startsWith("/auth");
+
+  if (!isAuthenticated || isLandingPage || isAuthRoute) {
+    return (
+      <div className="min-h-screen bg-background">
+        <main className="container mx-auto max-w-7xl px-4 py-6">{children}</main>
+      </div>
+    );
   }
   return (
     <div className="min-h-screen bg-background">

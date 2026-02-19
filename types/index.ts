@@ -11,6 +11,10 @@ export interface DbUser {
   engagement_score?: number;
 }
 
+export interface AuthUser extends User {
+  user_id: number;
+}
+
 export interface DbProject {
   project_id: number;
   title: string;
@@ -37,11 +41,13 @@ export interface User {
   badges?: Badge[];
   points?: number;
   joinedAt?: Date;
-  
+
   // Add database compatibility
-  user_id?: number; // ✅ Add this for database operations
+  user_id?: number;
   rating?: number;
   engagement_score?: number;
+  /** Set from ADMIN_EMAILS; true if user email is in the list */
+  isAdmin?: boolean;
 }
 
 export interface Profile extends User {
@@ -68,12 +74,22 @@ export interface Project {
     roleId: string;
     status: 'pending' | 'accepted' | 'rejected';
     appliedAt: Date;
+    matchId?: string;
+    metrics?: {
+      skillMatchScore?: number;
+      engagementScore?: number;
+      ratingSnapshot?: number;
+    };
+    decisions?: {
+      owner: 'pending' | 'accepted' | 'rejected';
+      user: 'pending' | 'accepted' | 'rejected';
+    };
   }>;
   createdAt?: Date;
   updatedAt?: Date;
   deadline?: Date;
   commitment?: 'part-time' | 'full-time' | 'weekend' | 'flexible';
-  
+
   // Add database compatibility
   project_id?: number;
   owner_id?: number;

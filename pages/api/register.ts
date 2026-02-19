@@ -1,16 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { Pool } from 'pg';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres123@localhost:5433/konverge',
-});
+import bcrypt from 'bcrypt';
+import pool from '@/lib/db';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { name, email } = req.body;
+  const { name, email, password } = req.body as {
+    name?: string;
+    email?: string;
+    password?: string;
+  };
 
   // Validation
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -21,10 +22,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Email is required' });
   }
 
-  // Email format validation
+  if (!password || typeof password !== 'string' || !password.trim()) {
+    return res.status(400).json({ error: 'Password is required' });
+  }
+
+  // Field format validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
     return res.status(400).json({ error: 'Invalid email format' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
   }
 
   try {
@@ -38,13 +47,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(409).json({ error: 'Email already registered. Please sign in instead.' });
     }
 
-    // Insert new user with only name and email
-    // Skills, bio, github, linkedin will be added during onboarding
+    const passwordHash = await bcrypt.hash(password.trim(), 10);
+
+    // Insert new user; profile fields filled during onboarding
     const result = await pool.query(
-      `INSERT INTO users (name, email, rating, engagement_score)
-       VALUES ($1, $2, 0.0, 0)
+      `INSERT INTO users (name, email, password_hash, rating, engagement_score)
+       VALUES ($1, $2, $3, 0.0, 0)
        RETURNING user_id, name, email`,
-      [name.trim(), email.trim()]
+      [name.trim(), email.trim(), passwordHash]
     );
 
     return res.status(201).json({

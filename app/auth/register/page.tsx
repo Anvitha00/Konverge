@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import Link from "next/link";
 export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -34,24 +36,53 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!password.trim()) {
+      toast.error("Please enter a password");
+      return;
+    }
+
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters long");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), email: email.trim() }),
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          password: password.trim(),
+        }),
       });
 
       const data = await res.json();
 
-      if (res.ok) {
-        toast.success("Registration successful! Please complete your profile.");
-        // Redirect to onboarding with email as query param
-        router.push(`/auth/onboarding?email=${encodeURIComponent(email)}`);
-      } else {
+      if (!res.ok) {
         toast.error(data.error || "Registration failed");
+        return;
       }
+
+      const signInResult = await signIn("credentials", {
+        redirect: false,
+        email: email.trim(),
+        password,
+      });
+
+      if (signInResult?.error) {
+        toast.error(
+          "Account created, but automatic login failed. Please sign in manually."
+        );
+        router.push("/auth");
+        return;
+      }
+
+      toast.success("Registration successful! Complete your profile to continue.");
+      router.push(`/auth/onboarding?email=${encodeURIComponent(email.trim())}`);
+      router.refresh();
     } catch (error) {
       console.error("Registration error:", error);
       toast.error("Server error. Please try again later.");
@@ -99,6 +130,21 @@ export default function RegisterPage() {
                 placeholder="john@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            {/* Password Field */}
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium">
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Minimum 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
               />
             </div>

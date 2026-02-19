@@ -57,7 +57,7 @@ export default function Home() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
             K
           </div>
-          <span className="text-xl font-bold">Konverge</span>
+          <span className="text-xl font-bold">onverge</span>
         </div>
         <nav className="hidden md:flex items-center gap-6">
           <Link
@@ -102,38 +102,6 @@ export default function Home() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center mb-16">
-            <div>
-              <div className="text-2xl md:text-3xl font-bold text-primary">
-                500+
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Active Developers
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl md:text-3xl font-bold text-primary">
-                150+
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Projects Launched
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl md:text-3xl font-bold text-primary">
-                85%
-              </div>
-              <div className="text-sm text-muted-foreground">Success Rate</div>
-            </div>
-            <div>
-              <div className="text-2xl md:text-3xl font-bold text-primary">
-                24h
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Avg. Match Time
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Features */}

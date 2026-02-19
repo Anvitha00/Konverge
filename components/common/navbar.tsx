@@ -1,14 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageCircle, Users, Trophy, User, Plus, Search } from "lucide-react";
+import { signOut } from "next-auth/react";
+import {
+  MessageCircle,
+  Trophy,
+  User,
+  Plus,
+  Search,
+  LogOut,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/store/ui-store";
 import { useAuthStore } from "@/store/auth-store";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { getInitials } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { getInitials, cn } from "@/lib/utils";
 
 const navItems = [
   {
@@ -29,8 +38,23 @@ const navItems = [
 
 export function Navbar() {
   const pathname = usePathname();
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const { setProjectFormOpen } = useUIStore();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
+
+    try {
+      setIsSigningOut(true);
+      logout();
+      await signOut({ callbackUrl: "/auth" });
+    } catch {
+      // ignore; signOut will surface via next-auth
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
 
   // Only hide on landing page - show on all other pages when user exists
   if (!user || pathname === "/") return null;
@@ -76,6 +100,17 @@ export function Navbar() {
                 <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
               </Avatar>
             </Link>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSignOut}
+              disabled={isSigningOut}
+              className="inline-flex items-center gap-1"
+            >
+              <LogOut className="h-4 w-4" />
+              {isSigningOut ? "Signing out..." : "Sign out"}
+            </Button>
           </div>
         </div>
       </header>

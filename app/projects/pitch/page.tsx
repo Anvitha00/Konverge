@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { createProject } from "@/lib/api/projects";
 
 export default function PitchProjectPage() {
   const router = useRouter();
@@ -62,33 +63,26 @@ export default function PitchProjectPage() {
     }
 
     try {
-      const res = await fetch("/api/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-          required_skills,
-          owner_id: user.user_id || parseInt(user.id), // Use user_id or convert id to number
-          status: "Open",
-        }),
+      const ownerId = user.user_id ?? Number(user.id);
+      const response = await createProject({
+        title: title.trim(),
+        description: description.trim(),
+        required_skills,
+        owner_id: ownerId,
+        status: "Open",
+        roles_available: parseInt(rolesAvailable) || 0,
       });
 
-      const data = await res.json();
+      toast.success("Project created successfully! Recommendations generated.");
+      console.debug("Created project", response.project, response.matches);
 
-      if (res.ok) {
-        toast.success("Project created successfully!");
-        // Reset form
-        setTitle("");
-        setDescription("");
-        setSkills("");
-        // Redirect to projects page
-        setTimeout(() => {
-          router.push("/projects");
-        }, 1000);
-      } else {
-        toast.error(data.error || "Failed to create project");
-      }
+      setTitle("");
+      setDescription("");
+      setSkills("");
+
+      setTimeout(() => {
+        router.push("/projects");
+      }, 1000);
     } catch (error) {
       console.error("Error creating project:", error);
       toast.error("Network error. Please try again.");

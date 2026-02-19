@@ -3,10 +3,12 @@
 import "./globals.css";
 import { Inter } from "next/font/google";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { AppShell } from "@/components/common/app-shell";
-import { useAuthStore } from "@/store/auth-store";
+import { SessionProvider } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
+
+import { AppShell } from "@/components/common/app-shell";
+import { SessionSync } from "@/components/providers/session-sync";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -40,25 +42,18 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated } = useAuthStore();
-
-  // Check if we're on an auth page
-  const isAuthPage =
-    typeof window !== "undefined" &&
-    (window.location.pathname === "/" ||
-      window.location.pathname.startsWith("/auth"));
-
-  const showAppShell = isAuthenticated && !isAuthPage;
-
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            {showAppShell ? <AppShell>{children}</AppShell> : children}
-            <Toaster position="top-right" />
-          </AuthProvider>
-        </QueryClientProvider>
+        <SessionProvider>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <SessionSync />
+              <AppShell>{children}</AppShell>
+              <Toaster position="top-right" />
+            </AuthProvider>
+          </QueryClientProvider>
+        </SessionProvider>
       </body>
     </html>
   );

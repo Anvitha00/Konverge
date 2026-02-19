@@ -2,7 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  connectionString:'postgres://postgres:postgres123@localhost:5433/konverge',
+  // Use the same DATABASE_URL as the rest of the app, with a sane default.
+  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres123@localhost:5432/konverge',
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -15,7 +16,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   try {
     const result = await pool.query(
-      `SELECT user_id, name, email, bio, skills, github, linkedin, rating, engagement_score
+      `SELECT 
+         user_id,
+         name,
+         email,
+         COALESCE(bio, '') as bio,
+         COALESCE(skills, ARRAY[]::text[]) as skills,
+         github,
+         linkedin,
+         rating,
+         engagement_score
        FROM users
        WHERE user_id = $1`,
       [userId]

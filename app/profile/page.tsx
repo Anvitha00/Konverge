@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CreditCard as Edit,
   MapPin,
@@ -12,83 +13,616 @@ import {
   Check,
   X,
   MessageCircle,
+  StarHalf,
+  LogOut,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getUserProjects, updateApplicationStatus } from "@/lib/api/projects";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { toast } from "sonner";
+import { getUserProjects } from "@/lib/api/projects";
+import {
+  getPitchedMatches,
+  type PitchedProjectMatches,
+  type RecommendedMatch,
+} from "@/lib/api/matches";
+import {
+  getPendingRatings,
+  submitRating,
+  type PendingRating,
+} from "@/lib/api/ratings";
 import {
   getInitials,
   formatDate,
   calculateProfileCompleteness,
 } from "@/lib/utils";
-import type { Project } from "@/types";
+import type { Project, User } from "@/types";
+import type { RecommendedMatch } from "@/lib/api/matches";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
+import CollaborationManager from "@/components/collaborations/collaboration-manager";
+
+const resolveNumericId = (value?: number | string | null) => {
+  if (value === undefined || value === null) return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
+};
 
 export default function ProfilePage() {
-  const [user, setUser] = useState(null);
-  const { user: authUser } = useAuthStore();
+  const router = useRouter();
+  const { user: authUser, isAuthenticated, logout } = useAuthStore();
   const userId = authUser?.id;
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState<User | null>(null);
+  const [acceptedPitchedMatches, setAcceptedPitchedMatches] = useState<PitchedProjectMatches[]>([]);
+
+  const mapPitchedProjectToProfile = (
+    project: PitchedProjectMatches["project"],
+    matches: RecommendedMatch[]
+  ): Project => ({
+    id: project.id,
+    title: project.title,
+    description: project.description,
+    techStack: project.requiredSkills ?? [],
+    status: "pitching",
+    authorId: ownerNumericId ? String(ownerNumericId) : "",
+    applicants: matches.map((match) => ({
+      userId: String(match.recommendedUser.id),
+      user: {
+        id: String(match.recommendedUser.id),
+        name: match.recommendedUser.name,
+        email: match.recommendedUser.email,
+        skills: match.recommendedUser.skills ?? [],
+      },
+      roleId: match.requiredSkill ?? "general",
+      status: match.userDecision === "accepted" ? "accepted" : "pending",
+      appliedAt: new Date(match.createdAt),
+      matchId: String(match.matchId),
+      metrics: {
+        skillMatchScore: match.skillMatchScore,
+        engagementScore: match.engagementScoreSnapshot,
+        ratingSnapshot: match.ratingSnapshot,
+      },
+      decisions: {
+        owner: match.ownerDecision,
+        user: match.userDecision,
+      },
+    })),
+    collaborators: matches
+      .filter((match) => match.ownerDecision === "accepted" && match.userDecision === "accepted")
+      .map((match) => ({
+        id: String(match.recommendedUser.id),
+        name: match.recommendedUser.name,
+        email: match.recommendedUser.email,
+        skills: match.recommendedUser.skills ?? [],
+      })),
+  });
+  const [pendingRatings, setPendingRatings] = useState<PendingRating[]>([]);
+  const [ratingModal, setRatingModal] = useState<{
+    open: boolean;
+    rating?: PendingRating;
+    score: number;
+    feedback: string;
+  }>({ open: false, score: 5, feedback: "" });
+
+  const loadUserProfile = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const res = await fetch(`/api/profile?userId=${userId}`);
+      const data = await res.json();
+      setUser({
+        ...data.user,
+        skills: Array.isArray(data.user.skills) ? data.user.skills : [],
+      });
+    } catch (error) {
+      console.error("Failed to load profile", error);
+    }
+  }, [userId]);
 
   useEffect(() => {
-    if (!userId) return;
-    fetch(`/api/profile?userId=${userId}`)
-      .then((res) => res.json())
-      .then((data) => setUser(data.user));
-  }, [userId]);
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   const [isEditing, setIsEditing] = useState(false);
   const [activeProjectTab, setActiveProjectTab] = useState<
     "pitched" | "matched"
   >("pitched");
 
+  const ownerNumericId = resolveNumericId(
+    user?.user_id ?? user?.id ?? authUser?.user_id ?? authUser?.id
+  );
+
   const { data: pitchedProjects, isLoading: pitchedLoading } = useQuery({
-    queryKey: ["user-projects", user?.id ?? userId, "pitched"],
-    queryFn: () => getUserProjects(user?.id ?? userId, "pitched"),
-    enabled: !!user,
+    queryKey: ["pitch-matches", ownerNumericId],
+    queryFn: () => getPitchedMatches(ownerNumericId!),
+    enabled: !!ownerNumericId,
+    refetchInterval: 15000,
   });
 
   const { data: matchedProjects, isLoading: matchedLoading } = useQuery({
     queryKey: ["user-projects", user?.id ?? userId, "matched"],
     queryFn: () => getUserProjects(user?.id ?? userId, "matched"),
     enabled: !!user,
+    refetchInterval: 15000,
   });
 
-  const handleApplicationAction = async (
-    projectId: string,
-    userId: string,
-    action: "accepted" | "rejected"
-  ) => {
-    try {
-      await updateApplicationStatus(projectId, userId, action);
-      // Refetch projects to update UI
-      // In a real app, you'd use query invalidation
-      window.location.reload();
-    } catch (error) {
-      console.error("Failed to update application:", error);
+  const { data: pendingRatingsData } = useQuery({
+    queryKey: ["pending-ratings", ownerNumericId],
+    queryFn: () => getPendingRatings(ownerNumericId!),
+    enabled: !!ownerNumericId,
+    refetchInterval: 30000,
+  });
+
+  // Compute userId for collaborations query (before effectiveUserId is defined)
+  const collaborationsUserId = useMemo(() => {
+    return String(
+      user?.user_id ??
+        user?.id ??
+        authUser?.user_id ??
+        authUser?.id ??
+        userId ??
+        ""
+    );
+  }, [user, authUser, userId]);
+
+  // Fetch active collaborations (both accepted) for Profile Matched tab and Finish button
+  const { data: activeCollaborationsData, isLoading: activeCollaborationsLoading } = useQuery<{
+    collaborations: Array<{
+      project_id: number;
+      project_title: string;
+      project_description: string;
+      required_skill: string | null;
+      project_required_skills?: string[] | null;
+      project_owner_id?: number;
+      project_owner_name?: string;
+      project_owner_email?: string;
+    }>;
+  }>({
+    queryKey: ["user-collaborations", collaborationsUserId],
+    queryFn: async () => {
+      if (!collaborationsUserId) return { collaborations: [] };
+      const res = await fetch(`/api/user-collaborations?userId=${collaborationsUserId}`);
+      if (!res.ok) return { collaborations: [] };
+      return res.json();
+    },
+    enabled: !!collaborationsUserId,
+    refetchInterval: 15000,
+  });
+
+  const activeCollaborationProjectIds = useMemo(() => {
+    return new Set(
+      activeCollaborationsData?.collaborations?.map((c) => c.project_id) ?? []
+    );
+  }, [activeCollaborationsData]);
+
+  // Profile Matched tab: show only active collaborations (both accepted), with Finish button
+  const activeCollaborationProjects = useMemo((): Project[] => {
+    const collabs = activeCollaborationsData?.collaborations ?? [];
+    return collabs.map((c) => ({
+      id: String(c.project_id),
+      title: c.project_title ?? "",
+      description: c.project_description ?? "",
+      techStack: Array.isArray(c.project_required_skills) ? c.project_required_skills : c.required_skill ? [c.required_skill] : [],
+      status: "matching",
+      authorId: String(c.project_owner_id ?? ""),
+      author: {
+        id: String(c.project_owner_id ?? ""),
+        name: c.project_owner_name ?? "Project Owner",
+        email: c.project_owner_email ?? "",
+        skills: [],
+      },
+      applicants: [],
+      collaborators: [],
+    }));
+  }, [activeCollaborationsData]);
+
+  useEffect(() => {
+    if (pendingRatingsData) {
+      setPendingRatings(pendingRatingsData);
     }
-  };
+  }, [pendingRatingsData]);
+
+  const handleOpenRating = useCallback((rating: PendingRating) => {
+    setRatingModal({
+      open: true,
+      rating,
+      score: 5,
+      feedback: "",
+    });
+  }, []);
+
+  const handleCloseRatingModal = useCallback(() => {
+    setRatingModal((prev) => ({ ...prev, open: false, rating: undefined }));
+  }, []);
+
+  const handleRatingScoreChange = useCallback((value: number[]) => {
+    if (!value.length) return;
+    setRatingModal((prev) => ({ ...prev, score: value[0] }));
+  }, []);
+
+  const handleRatingFeedbackChange = useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const { value } = event.target;
+      setRatingModal((prev) => ({ ...prev, feedback: value }));
+    },
+    []
+  );
+
+  const invalidateRatingRelatedQueries = useCallback(() => {
+    if (ownerNumericId) {
+      queryClient.invalidateQueries({ queryKey: ["pending-ratings", ownerNumericId] });
+      queryClient.invalidateQueries({ queryKey: ["pitch-matches", ownerNumericId] });
+    }
+    const collaboratorId = user?.id ?? userId;
+    if (collaboratorId) {
+      queryClient.invalidateQueries({ queryKey: ["user-projects", collaboratorId, "matched"] });
+    }
+  }, [ownerNumericId, queryClient, user?.id, userId]);
+
+  const finishCollaborationMutation = useMutation({
+    mutationFn: async ({ userId: uid, projectId }: { userId: string; projectId: number }) => {
+      const res = await fetch("/api/finish-collaboration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid, projectId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to finish collaboration");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast.success(
+        data.canJoinNewProjects
+          ? "Collaboration finished. You can be recommended for new projects."
+          : "Collaboration marked as completed."
+      );
+      if (ownerNumericId) {
+        queryClient.invalidateQueries({ queryKey: ["user-collaboration-status", ownerNumericId] });
+      }
+      const collaboratorId = user?.id ?? userId;
+      if (collaboratorId) {
+        queryClient.invalidateQueries({ queryKey: ["user-projects", collaboratorId, "matched"] });
+      }
+      // Invalidate active collaborations so the Finish button disappears
+      const uid = user?.user_id ?? user?.id ?? authUser?.user_id ?? authUser?.id ?? userId;
+      if (uid) {
+        queryClient.invalidateQueries({ queryKey: ["user-collaborations", String(uid)] });
+      }
+      loadUserProfile();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const submitRatingMutation = useMutation({
+    mutationFn: async ({
+      ratingId,
+      score,
+      feedback,
+      raterId,
+    }: {
+      ratingId: number;
+      score: number;
+      feedback?: string;
+      raterId: number;
+    }) => submitRating(ratingId, { score, feedback, raterId }),
+    onSuccess: (_, variables) => {
+      toast.success("Rating submitted. Thanks for the feedback!");
+      setPendingRatings((prev) => prev.filter((rating) => rating.ratingId !== variables.ratingId));
+      invalidateRatingRelatedQueries();
+      loadUserProfile();
+      handleCloseRatingModal();
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : "Could not submit rating. Please try again.";
+      toast.error(message);
+    },
+  });
+
+  const handleSubmitRating = useCallback(() => {
+    if (!ratingModal.rating || !ownerNumericId || submitRatingMutation.isPending) {
+      return;
+    }
+    submitRatingMutation.mutate({
+      ratingId: ratingModal.rating.ratingId,
+      score: ratingModal.score,
+      feedback: ratingModal.feedback,
+      raterId: ownerNumericId,
+    });
+  }, [ownerNumericId, ratingModal, submitRatingMutation]);
+
+  const handleLogout = useCallback(() => {
+    logout();
+    router.push("/");
+  }, [logout, router]);
+
+  useEffect(() => {
+    if (!pitchedProjects) {
+      setAcceptedPitchedMatches([]);
+      return;
+    }
+    setAcceptedPitchedMatches(pitchedProjects);
+  }, [pitchedProjects]);
+
+  const pendingRatingBanner = pendingRatings.length > 0 && (
+    <Alert className="border-amber-500/40 bg-amber-50 text-amber-900">
+      <AlertTitle className="flex items-center justify-between gap-4">
+        <span>
+          You have {pendingRatings.length} teammate
+          {pendingRatings.length > 1 ? "s" : ""} waiting for a rating
+        </span>
+        <Badge variant="secondary" className="bg-white text-amber-900">
+          Awaiting feedback
+        </Badge>
+      </AlertTitle>
+      <AlertDescription className="mt-4 space-y-3">
+        {pendingRatings.slice(0, 3).map((rating) => (
+          <div
+            key={rating.ratingId}
+            className="flex flex-col gap-2 rounded-xl border border-amber-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <p className="font-medium text-sm">
+                Rate {rating.ratee.name}
+                {rating.projectTitle ? ` for ${rating.projectTitle}` : ""}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Requested {formatDate(new Date(rating.createdAt))}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="w-full sm:w-auto"
+              onClick={() => handleOpenRating(rating)}
+            >
+              Rate teammate
+            </Button>
+          </div>
+        ))}
+        {pendingRatings.length > 3 && (
+          <p className="text-xs text-muted-foreground">
+            +{pendingRatings.length - 3} more pending ratings
+          </p>
+        )}
+      </AlertDescription>
+    </Alert>
+  );
 
   const handleChatClick = (userId: string) => {
-    // TODO: Open chat with user
+    // TODO: integrate chat launcher on profile
     console.log("Open chat with user:", userId);
   };
 
-  if (!user) return <div>Loading...</div>;
+  const completeness = useMemo(() => {
+    if (!user) return 0;
+    return calculateProfileCompleteness(user);
+  }, [user]);
 
-  const completeness = calculateProfileCompleteness(user);
+  const acceptedMatchedProjects = useMemo(() => {
+    if (!matchedProjects) return [];
+    return matchedProjects.filter((project) => project.status === "matching");
+  }, [matchedProjects]);
+
+  if (!user) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const userSkills = Array.isArray(user.skills) ? user.skills : [];
+  const effectiveUserId =
+    String(
+      user.user_id ??
+        user.id ??
+        authUser?.user_id ??
+        authUser?.id ??
+        userId
+    );
+
+  const PitchedProjectsList = ({
+    projects,
+    loading,
+    onDecision,
+    decisionPending,
+  }: {
+    projects?: PitchedProjectMatches[];
+    loading: boolean;
+    onDecision: (matchId: number, decision: "accepted" | "rejected") => void;
+    decisionPending: boolean;
+  }) => {
+    if (loading) {
+      return (
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <Skeleton className="h-6 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-full mb-4" />
+                <div className="flex gap-2 mb-4">
+                  <Skeleton className="h-6 w-16" />
+                  <Skeleton className="h-6 w-16" />
+                  <Skeleton className="h-6 w-16" />
+                </div>
+                <Skeleton className="h-8 w-32" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      );
+    }
+
+    if (!projects?.length) {
+      return (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">
+            You havent received any recommendations yet. Pitch a project to
+            trigger the matching engine.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {projects.map(({ project, matches }) => (
+          <Card key={project.id}>
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">{project.title}</h3>
+                  <p className="text-muted-foreground text-sm">
+                    {project.description}
+                  </p>
+                </div>
+                <Badge variant="secondary">{matches.length} matches</Badge>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {(project.requiredSkills ?? []).map((skill) => (
+                  <Badge key={skill} variant="outline" className="text-xs">
+                    {skill}
+                  </Badge>
+                ))}
+              </div>
+
+              {matches.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No candidates found yet. Try updating your required skills or
+                  refresh recommendations.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {matches.map((match) => (
+                    <div
+                      key={match.matchId}
+                      className="p-4 border rounded-xl space-y-3"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarImage src="" alt={match.recommendedUser.name} />
+                            <AvatarFallback>
+                              {getInitials(match.recommendedUser.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">
+                              {match.recommendedUser.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {match.recommendedUser.email}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Badge variant="secondary">
+                            Owner: {match.ownerDecision}
+                          </Badge>
+                          <Badge variant="outline">
+                            User: {match.userDecision}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {match.ownerDecision === "accepted" && match.userDecision === "accepted" && (
+                        <Alert>
+                          <AlertTitle className="text-sm font-semibold">
+                            Collaboration confirmed
+                          </AlertTitle>
+                          <AlertDescription className="text-xs">
+                            You and {match.recommendedUser.name} are now collaborating on this project.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                        <span>
+                          Skill match: {match.skillMatchScore?.toFixed(2) ?? "-"}
+                        </span>
+                        <span>Engagement: {match.engagementScoreSnapshot ?? "-"}</span>
+                        <span>Rating: {match.ratingSnapshot ?? "-"}</span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {match.requiredSkill && (
+                          <Badge variant="outline">
+                            Required Skill: {match.requiredSkill}
+                          </Badge>
+                        )}
+                        <Badge variant="outline">
+                          Recommended {formatDate(new Date(match.createdAt))}
+                        </Badge>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 justify-between">
+                        <div className="flex flex-wrap gap-2">
+                          {match.recommendedUser.skills?.map((skill) => (
+                            <Badge key={skill} variant="ghost" className="text-xs">
+                              {skill}
+                            </Badge>
+                          ))}
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleChatClick(String(match.recommendedUser.id))}
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  };
 
   const ProjectsList = ({
     projects,
     loading,
     type,
+    onFinishCollaboration,
+    finishCollaborationPending,
+    currentUserId,
+    activeCollaborationProjectIds,
   }: {
     projects?: Project[];
     loading: boolean;
     type: "pitched" | "matched";
+    onFinishCollaboration?: (projectId: number) => void;
+    finishCollaborationPending?: boolean;
+    currentUserId?: string;
+    activeCollaborationProjectIds?: Set<number>;
   }) => {
     if (loading) {
       return (
@@ -137,7 +671,7 @@ export default function ProfilePage() {
                     {project.description}
                   </p>
                   <div className="flex flex-wrap gap-2 mb-4">
-                    {project.techStack.map((tech) => (
+                    {(project.techStack ?? []).map((tech) => (
                       <Badge key={tech} variant="outline" className="text-xs">
                         {tech}
                       </Badge>
@@ -152,95 +686,6 @@ export default function ProfilePage() {
                   {project.status.replace("-", " ")}
                 </Badge>
               </div>
-
-              {type === "pitched" && project.applicants.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="font-medium">Applications</h4>
-                  {project.applicants.map((application) => (
-                    <div
-                      key={application.userId}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage
-                            src={application.user.avatar}
-                            alt={application.user.name}
-                          />
-                          <AvatarFallback>
-                            {getInitials(application.user.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium text-sm">
-                            {application.user.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Applied {formatDate(application.appliedAt)}
-                          </p>
-                        </div>
-                      </div>
-
-                      {application.status === "pending" ? (
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleChatClick(application.userId)}
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              handleApplicationAction(
-                                project.id,
-                                application.userId,
-                                "accepted"
-                              )
-                            }
-                          >
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              handleApplicationAction(
-                                project.id,
-                                application.userId,
-                                "rejected"
-                              )
-                            }
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant={
-                              application.status === "accepted"
-                                ? "default"
-                                : "destructive"
-                            }
-                          >
-                            {application.status}
-                          </Badge>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleChatClick(application.userId)}
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {type === "pitched" && project.collaborators.length > 0 && (
                 <div className="space-y-3 mt-4">
@@ -337,6 +782,24 @@ export default function ProfilePage() {
                         </Button>
                       </div>
                     ))}
+
+                  {onFinishCollaboration && currentUserId && activeCollaborationProjectIds?.has(Number(project.id)) && (
+                    <div className="pt-3 border-t">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                        disabled={finishCollaborationPending}
+                        onClick={() => onFinishCollaboration(Number(project.id))}
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        {finishCollaborationPending ? "Finishing…" : "Finish collaboration"}
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Mark this project as done to free a slot and get recommended for more projects.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -345,6 +808,8 @@ export default function ProfilePage() {
       </div>
     );
   };
+
+  const currentRatingTarget = ratingModal.rating;
 
   return (
     <div className="space-y-6">
@@ -359,6 +824,8 @@ export default function ProfilePage() {
           {isEditing ? "Cancel" : "Edit Profile"}
         </Button>
       </div>
+
+      {pendingRatingBanner}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
@@ -390,11 +857,17 @@ export default function ProfilePage() {
               <div>
                 <h3 className="font-semibold mb-2">Skills</h3>
                 <div className="flex flex-wrap gap-2">
-                  {user.skills.map((skill) => (
-                    <Badge key={skill} variant="outline">
-                      {skill}
-                    </Badge>
-                  ))}
+                  {userSkills.length > 0 ? (
+                    userSkills.map((skill) => (
+                      <Badge key={skill} variant="outline">
+                        {skill}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      Add your skills in onboarding to get better matches.
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -447,7 +920,9 @@ export default function ProfilePage() {
 
                 <TabsContent value="pitched">
                   <ProjectsList
-                    projects={pitchedProjects}
+                    projects={acceptedPitchedMatches.map(({ project, matches }) =>
+                      mapPitchedProjectToProfile(project, matches)
+                    )}
                     loading={pitchedLoading}
                     type="pitched"
                   />
@@ -455,9 +930,18 @@ export default function ProfilePage() {
 
                 <TabsContent value="matched">
                   <ProjectsList
-                    projects={matchedProjects}
-                    loading={matchedLoading}
+                    projects={activeCollaborationProjects}
+                    loading={activeCollaborationsLoading}
                     type="matched"
+                    onFinishCollaboration={(projectId) =>
+                      finishCollaborationMutation.mutate({
+                        userId: effectiveUserId,
+                        projectId,
+                      })
+                    }
+                    finishCollaborationPending={finishCollaborationMutation.isPending}
+                    currentUserId={effectiveUserId}
+                    activeCollaborationProjectIds={activeCollaborationProjectIds}
                   />
                 </TabsContent>
               </Tabs>
@@ -487,6 +971,8 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
+          <CollaborationManager userId={effectiveUserId} />
+
           {/* Quick Actions */}
           <Card>
             <CardHeader>
@@ -502,10 +988,80 @@ export default function ProfilePage() {
               <Button variant="outline" className="w-full justify-start">
                 Update Availability
               </Button>
+              <Button 
+                variant="outline" 
+                className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      <Dialog
+        open={ratingModal.open}
+        onOpenChange={(open) => {
+          if (!open) handleCloseRatingModal();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rate your teammate</DialogTitle>
+            <DialogDescription>
+              {currentRatingTarget
+                ? `Share feedback for ${currentRatingTarget.ratee.name}${
+                    currentRatingTarget.projectTitle ? ` on ${currentRatingTarget.projectTitle}` : ""
+                  }.`
+                : "Provide feedback to help improve collaboration quality."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div>
+              <div className="mb-2 flex items-center justify-between text-sm font-medium">
+                <span>Score</span>
+                <span className="flex items-center gap-1">
+                  <Star className="h-4 w-4 text-yellow-500" />
+                  {ratingModal.score.toFixed(1)} / 5
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={5}
+                step={0.5}
+                value={[ratingModal.score]}
+                onValueChange={handleRatingScoreChange}
+              />
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-medium">Feedback (optional)</p>
+              <Textarea
+                placeholder="What went well? Anything they could improve?"
+                value={ratingModal.feedback}
+                onChange={handleRatingFeedbackChange}
+                rows={4}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCloseRatingModal}
+              disabled={submitRatingMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSubmitRating} disabled={submitRatingMutation.isPending}>
+              {submitRatingMutation.isPending ? "Submitting..." : "Submit rating"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -13,21 +13,51 @@ export function formatDate(date: Date | string) {
   }).format(new Date(date));
 }
 
+export function formatDateTime(date: Date | string) {
+  return new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(date));
+}
+
+export function formatTime(date: Date | string) {
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(date));
+}
+
+export function formatDayLabel(date: Date | string) {
+  const d = new Date(date);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  if (isSameDay(d, today)) return 'Today';
+  if (isSameDay(d, yesterday)) return 'Yesterday';
+  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' }).format(d);
+}
+
 export function formatRelativeTime(date: Date | string) {
   const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-  const now = new Date();
-  const target = new Date(date);
-  const diff = target.getTime() - now.getTime();
-  
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  
-  if (Math.abs(days) >= 1) return rtf.format(days, 'day');
-  if (Math.abs(hours) >= 1) return rtf.format(hours, 'hour');
-  if (Math.abs(minutes) >= 1) return rtf.format(minutes, 'minute');
-  return 'just now';
+  const nowMs = Date.now();
+  const targetMs = new Date(date).getTime();
+  const diffMs = targetMs - nowMs; // negative for past
+
+  const absMs = Math.abs(diffMs);
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+
+  if (absMs < 45 * 1000) return 'just now';
+  if (absMs < hourMs) return rtf.format(Math.round(diffMs / minuteMs), 'minute');
+  if (absMs < dayMs) return rtf.format(Math.round(diffMs / hourMs), 'hour');
+  return rtf.format(Math.round(diffMs / dayMs), 'day');
 }
 
 export function truncate(text: string, length: number = 100) {

@@ -2,7 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  connectionString:'postgres://postgres:postgres123@localhost:5433/konverge',
+  // Align with DATABASE_URL so all services share the same database.
+  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres123@localhost:5432/konverge',
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -11,7 +12,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Validation
     if (!title || !description || !required_skills || !owner_id) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Missing required fields',
         required: ['title', 'description', 'required_skills', 'owner_id']
       });
@@ -19,16 +20,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Validate required_skills is an array
     if (!Array.isArray(required_skills)) {
-      return res.status(400).json({ 
-        error: 'required_skills must be an array' 
+      return res.status(400).json({
+        error: 'required_skills must be an array'
       });
     }
 
     // Validate roles_available is a number
     const rolesNum = roles_available !== undefined ? parseInt(roles_available) : 0;
     if (isNaN(rolesNum) || rolesNum < 0) {
-      return res.status(400).json({ 
-        error: 'roles_available must be a valid number' 
+      return res.status(400).json({
+        error: 'roles_available must be a valid number'
       });
     }
 
@@ -41,19 +42,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         [title, description, required_skills, owner_id, status || 'Open', rolesNum]
       );
 
-      return res.status(201).json({ 
+      return res.status(201).json({
         message: 'Project created successfully',
         project: result.rows[0]
       });
     } catch (err) {
       console.error('Create Project API error:', err);
-      return res.status(500).json({ 
-        error: 'Database error', 
+      return res.status(500).json({
+        error: 'Database error',
         details: process.env.NODE_ENV === 'development' ? String(err) : undefined
       });
     }
   }
-  
+
   if (req.method === 'GET') {
     const { view, userId } = req.query;
     try {
