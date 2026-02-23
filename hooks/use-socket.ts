@@ -49,7 +49,7 @@ export function usePresence() {
     if (!socket) return;
     
     socket.on('user-online', (userId: string) => {
-      setOnlineUsers(prev => [...new Set([...prev, userId])]);
+      setOnlineUsers(prev => (prev.includes(userId) ? prev : [...prev, userId]));
     });
     
     socket.on('user-offline', (userId: string) => {
@@ -79,7 +79,7 @@ export function useTyping(threadId: string) {
     
     socket.on('typing', ({ userId, threadId: tid }: { userId: string; threadId: string }) => {
       if (tid === threadId) {
-        setTypingUsers(prev => [...new Set([...prev, userId])]);
+        setTypingUsers(prev => (prev.includes(userId) ? prev : [...prev, userId]));
       }
     });
     

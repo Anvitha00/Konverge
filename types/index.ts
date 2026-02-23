@@ -48,6 +48,9 @@ export interface User {
   engagement_score?: number;
   /** Set from ADMIN_EMAILS; true if user email is in the list */
   isAdmin?: boolean;
+  /** From DB / API profile response */
+  github?: string;
+  linkedin?: string;
 }
 
 export interface Profile extends User {

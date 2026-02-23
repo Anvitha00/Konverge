@@ -686,11 +686,11 @@ export default function ProfilePage() {
                 </Badge>
               </div>
 
-              {type === "pitched" && project.collaborators.length > 0 && (
+              {type === "pitched" && (project.collaborators?.length ?? 0) > 0 && (
                 <div className="space-y-3 mt-4">
                   <h4 className="font-medium">Collaborators</h4>
                   <div className="flex flex-wrap gap-2">
-                    {project.collaborators.map((collaborator) => (
+                    {(project.collaborators ?? []).map((collaborator) => (
                       <div
                         key={collaborator.id}
                         className="flex items-center gap-2 p-2 border rounded-lg"
@@ -718,22 +718,22 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {type === "matched" && (
+              {type === "matched" && project.author && (
                 <div className="space-y-3">
                   <h4 className="font-medium">Project Team</h4>
                   <div className="flex items-center gap-3 p-3 border rounded-lg">
                     <Avatar className="h-8 w-8">
                       <AvatarImage
-                        src={project.author.avatar}
-                        alt={project.author.name}
+                        src={project.author?.avatar}
+                        alt={project.author?.name ?? ""}
                       />
                       <AvatarFallback>
-                        {getInitials(project.author.name)}
+                        {getInitials(project.author?.name ?? "")}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                       <p className="font-medium text-sm">
-                        {project.author.name}
+                        {project.author?.name}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Project Owner
@@ -742,14 +742,14 @@ export default function ProfilePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleChatClick(project.author.id)}
+                      onClick={() => project.author && handleChatClick(project.author.id)}
                     >
                       <MessageCircle className="h-4 w-4" />
                     </Button>
                   </div>
 
-                  {project.collaborators
-                    .filter((c) => c.id !== user.id)
+                  {(project.collaborators ?? [])
+                    .filter((c) => c.id !== user?.id)
                     .map((collaborator) => (
                       <div
                         key={collaborator.id}

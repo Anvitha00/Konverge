@@ -162,9 +162,9 @@ export const mockMatches: Match[] = [
     reasons: ['Skills match: Node.js, PostgreSQL', 'Available part-time', 'Similar project experience'],
     status: 'pending',
     createdAt: new Date('2024-03-02'),
-    project: mockProjects[0],
-    user: mockUsers[1],
-    role: mockProjects[0].roles[1],
+    project: mockProjects[0]!,
+    user: mockUsers[1]!,
+    role: mockProjects[0]!.roles![1],
   },
 ];
 

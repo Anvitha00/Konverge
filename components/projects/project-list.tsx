@@ -38,7 +38,8 @@ export function ProjectList() {
   }, [data, page]);
   
   useEffect(() => {
-    if (inView && data?.pagination.page < data?.pagination.totalPages && !isFetching) {
+    const pag = data?.pagination;
+    if (inView && pag && (pag.page ?? 0) < (pag.totalPages ?? 0) && !isFetching) {
       setPage(prev => prev + 1);
     }
   }, [inView, data?.pagination, isFetching]);
@@ -105,7 +106,7 @@ export function ProjectList() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {allProjects.map((project) => (
-            <ProjectCard key={project.id} project={project} viewType={activeView} />
+            <ProjectCard key={project.id} project={project} />
           ))}
         </div>
       )}

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { Profile } from '@/types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -87,7 +88,7 @@ export function calculateProfileCompleteness(profile: Partial<Profile>): number 
   let completed = 0;
   fields.forEach(field => {
     const value = field.includes('.') 
-      ? field.split('.').reduce((obj, key) => obj?.[key], profile)
+      ? field.split('.').reduce<unknown>((obj, key) => (obj as Record<string, unknown>)?.[key], profile)
       : profile[field as keyof Profile];
     
     if (Array.isArray(value) ? value.length > 0 : Boolean(value)) {

@@ -68,29 +68,20 @@ export default function CollaborationManager({ userId }: { userId: string }) {
 
       if (response.ok) {
         const data = await response.json();
-        toast({
-          title: 'Collaboration Finished',
-          description: `You can now join ${data.canJoinNewProjects ? 'new projects' : 'up to 1 more project'}.`,
-        });
+        toast.success(
+          `Collaboration finished. You can now join ${data.canJoinNewProjects ? 'new projects' : 'up to 1 more project'}.`
+        );
         
         // Refresh data
         fetchCollaborations();
         fetchUserStatus();
       } else {
         const error = await response.json();
-        toast({
-          title: 'Error',
-          description: error.error || 'Failed to finish collaboration',
-          variant: 'destructive',
-        });
+        toast.error(error.error || 'Failed to finish collaboration');
       }
     } catch (error) {
       console.error('Error finishing collaboration:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to finish collaboration',
-        variant: 'destructive',
-      });
+      toast.error('Failed to finish collaboration');
     }
   };
 
