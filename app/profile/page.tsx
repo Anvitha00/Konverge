@@ -29,7 +29,6 @@ import { getUserProjects } from "@/lib/api/projects";
 import {
   getPitchedMatches,
   type PitchedProjectMatches,
-  type RecommendedMatch,
 } from "@/lib/api/matches";
 import {
   getPendingRatings,
@@ -70,7 +69,7 @@ export default function ProfilePage() {
 
   const mapPitchedProjectToProfile = (
     project: PitchedProjectMatches["project"],
-    matches: RecommendedMatch[]
+    matches: PitchedProjectMatches["matches"]
   ): Project => ({
     id: project.id,
     title: project.title,
