@@ -743,11 +743,27 @@ class SubmitRatingRequest(BaseModel):
         return value
 
 
+def _safe_init_db():
+    """Initialize chat/rating/feedback tables. Skip if base schema (users) does not exist."""
+    try:
+        init_chat_tables()
+        init_rating_tables()
+        init_feedback_learning_tables()
+        print("✅ Database tables initialized")
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "does not exist" in err_msg or "undefined_table" in err_msg:
+            print(
+                "⚠️  Database schema not initialized. Run init_db.sql and schema_updates.sql "
+                "against your DATABASE_URL. See repo docs for setup."
+            )
+        else:
+            raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_chat_tables()
-    init_rating_tables()
-    init_feedback_learning_tables()
+    _safe_init_db()
     print("✅ Application started successfully")
 
     yield
