@@ -1,130 +1,98 @@
-# Konverge – Project Documentation
+# Konverge — Project Documentation
 
-This document describes the Konverge platform as implemented in the codebase: a web-based collaboration system that connects project owners with potential collaborators through skill-based matching, feedback learning, real-time chat, and engagement tracking.
+## Abstract
+
+Konverge is a collaboration platform that connects project owners with potential collaborators using skill-based matching and decision feedback. Users can pitch projects, receive recommendations, accept/reject matches, form collaborations, communicate in real time, and view analytics. The implemented system uses a **Next.js (App Router)** frontend with **NextAuth (Credentials)** for authentication, a **FastAPI** backend for matching/chat/analytics APIs, and a shared **PostgreSQL** database.
 
 ---
 
 ## 1. Introduction
 
-Konverge is a smart collaboration platform where developers can pitch project ideas, receive automated collaborator recommendations, and work together using in-app chat. The system uses a multi-factor scoring model (skills, engagement, peer rating, and historical accept/reject feedback) to suggest suitable collaborators and enforces collaboration limits and inactive-user handling.
+Konverge targets a common problem: strong project ideas often stall because it’s hard to find reliable collaborators with the right skills, and there’s no unified workflow for pitching, matching, communicating, and tracking progress.
 
 ### 1.1 Problem Statement
 
-In the current ecosystem, developers struggle to find suitable collaborators for their projects, and skilled individuals lack a single place to discover projects that match their expertise. The platform addresses:
-
-- **Discovery gap** – No systematic way to match project requirements with user skills.
-- **Trust deficit** – Few reliable signals for collaborator credibility or past performance.
-- **Poor engagement** – Limited incentives and visibility for active participation.
-- **Fragmented communication** – Coordination often happens across multiple external tools.
-- **Quality assessment** – No standard way to evaluate contributions or collaboration quality.
-
-The implementation addresses these by: automated recommendations with weighted scoring, peer ratings and engagement points, integrated WebSocket chat, and feedback-based learning from accept/reject decisions.
+- Collaborator discovery is manual and noisy (skills/availability are hard to verify).
+- Teams form without clear signals (engagement, ratings, decision history).
+- Communication happens on scattered tools; project state is hard to track.
+- Platforms rarely learn from accept/reject decisions to improve recommendations.
 
 ### 1.2 Objectives
 
-The implemented system aims to:
+- **Project pitching:** allow users to publish projects with required skills.
+- **Automated matching:** recommend users based on skill overlap and signals.
+- **Dual-decision workflow:** both owner and recommended user accept/reject.
+- **Collaboration management:** enforce commitment limits and allow finishing a collaboration.
+- **Communication:** provide chat and messaging via REST + WebSockets.
+- **Analytics:** provide user-level analytics and admin-level platform stats.
 
-1. **Enable project pitching** – Users create projects with title, description, and required skills; the backend stores them and triggers recommendations.
-2. **Recommend collaborators automatically** – For each project, the backend computes a composite score (skill match, engagement, rating, feedback) and stores top candidates per required skill in `project_matches`.
-3. **Track decisions and learn** – Accept/reject decisions are recorded in `match_feedback` and in `user_feedback_stats` (per-user, per-skill accept rate) to refine future recommendations.
-4. **Enforce collaboration limits** – A user may have at most two active commitments (pitched projects + active collaborations); the database trigger and candidate query enforce this.
-5. **Support real-time chat** – Thread-based messaging over WebSockets so owners and collaborators can communicate without leaving the platform.
-6. **Rank and analyse users** – Engagement points for pitching, applying, and starting collaborations; leaderboard and analytics dashboard; peer ratings after collaboration completion.
+### 1.3 Existing models
 
-### 1.3 Existing Models
+Relevant approaches that informed the implementation:
 
-The design draws from existing platforms and recommendation approaches:
-
-- **GitHub / LinkedIn** – Collaboration and networking without automated skill-based matching.
-- **Upwork** – Paid freelancer matching; not aimed at volunteer or student-led collaboration.
-- **Kaggle** – Domain-specific team formation, not general project collaboration.
-- **Collaborative filtering** – Uses behaviour (e.g. accept/reject history) via `user_feedback_stats` accept rate.
-- **Content-based matching** – Uses profile attributes (skills) via overlap between required and user skills.
-- **Hybrid** – The implementation combines both: skill overlap and behavioural feedback (engagement, rating, accept rate) in one composite score.
+- **Content-based matching:** overlap between required skills and user skills.
+- **Hybrid scoring:** combine skill match with engagement, ratings, and feedback signals.
+- **Feedback learning:** accept/reject behavior can be aggregated per user/skill to improve future ranking.
 
 ### 1.4 Dataset
 
-The system uses a **synthetic dataset** defined in SQL and optional Python scripts:
+The system uses a PostgreSQL schema and synthetic seed data:
 
-- **Entities:**
-  - **users** – `user_id`, `name`, `email`, `password_hash`, `skills` (array), `bio`, `github`, `linkedin`, `rating`, `engagement_score`, `account_status`.
-  - **projects** – `project_id`, `title`, `description`, `required_skills` (array), `owner_id`, `status`, `roles_available`, `created_at`.
-  - **project_matches** – Recommendation snapshots: `match_id`, `project_id`, `recommended_user_id`, `required_skill`, `skill_match_score`, `engagement_score_snapshot`, `rating_snapshot`, `owner_decision`, `user_decision`, `source_type` (automated/manual), timestamps.
-  - **project_collaborators** – Active or completed collaborations: `project_id`, `user_id`, `required_skill`, `status` (active/completed/removed), `joined_at`.
-  - **engagement** – Activity log: `user_id`, `points`, `reason`, `timestamp`.
-  - **user_ratings** – Peer ratings: `project_id`, `rater_id`, `ratee_id`, `score`, `feedback`, `status` (pending/completed).
-  - **user_feedback_stats** – Learning: `user_id`, `skill`, `total_recommendations`, `accepted_count`, `rejected_count`, `accept_rate`.
-  - **match_feedback** – Decision log: `match_id`, `actor_type`, `decision`, `reason_json`.
-  - **Chat** – `chat_threads`, `thread_participants`, `messages`, `message_reads` (created at runtime if not present).
+Key tables (high level):
 
-- **Source:** `init_db.sql` for schema and seed data; `schema_updates.sql` for triggers, views, and freeze/unfreeze functions; optional `populate_demo_data.py` for richer demo data.
-
-Example schema (core tables from `init_db.sql`):
-
-```sql
-CREATE TABLE users (
-    user_id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(150) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    skills TEXT[],
-    bio TEXT,
-    github VARCHAR(150),
-    linkedin VARCHAR(150),
-    rating NUMERIC(2,1) DEFAULT 0.0,
-    engagement_score INT DEFAULT 0,
-    account_status VARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('active','frozen'))
-);
-
-CREATE TABLE project_matches (
-    match_id SERIAL PRIMARY KEY,
-    project_id INT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
-    recommended_user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    required_skill TEXT,
-    skill_match_score NUMERIC(5,2) DEFAULT 0.0,
-    engagement_score_snapshot INT DEFAULT 0,
-    rating_snapshot NUMERIC(2,1) DEFAULT 0.0,
-    owner_decision VARCHAR(10) DEFAULT 'pending' CHECK (owner_decision IN ('pending','accepted','rejected')),
-    user_decision VARCHAR(10) DEFAULT 'pending' CHECK (user_decision IN ('pending','accepted','rejected')),
-    source_type VARCHAR(10) DEFAULT 'automated' CHECK (source_type IN ('automated','manual')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_project_user_skill UNIQUE (project_id, recommended_user_id, required_skill)
-);
-```
+- `users` — profile, skills, rating, engagement score, account status, password hash
+- `projects` — pitched projects with `required_skills`, owner, status
+- `project_matches` — recommendations + decisions (`owner_decision`, `user_decision`)
+- `project_collaborators` — active/completed collaborations
+- `engagement` — engagement events/points
+- `user_ratings` — peer ratings
+- `user_feedback_stats` — learning stats per user/skill bucket
+- Chat tables created at runtime if missing: `chat_threads`, `thread_participants`, `messages`, `message_reads`
 
 ### 1.5 Proposed Model (Brief)
 
-The implemented flow is:
+Konverge implements a closed loop:
 
-1. **Authentication** – NextAuth.js credentials provider; login with email/password; user stored in PostgreSQL and mapped into JWT/session; frontend keeps user in Zustand (`auth-store`) with persistence.
-2. **Project creation** – Owner submits project via API; backend inserts into `projects`, awards engagement points, and calls `generate_recommendations_for_project(project_id)`.
-3. **Recommendation engine** – Fetches candidates (active, under commitment limit), computes skill match (overlap vs required skills), loads engagement, rating, and per-skill accept rate from `user_feedback_stats`; builds composite score with fixed weights; selects up to three candidates per required skill and writes rows into `project_matches`.
-4. **Dual decisions** – Owner and recommended user each accept or reject via PATCH endpoints; decisions stored in `project_matches` and `match_feedback`; `user_feedback_stats` updated for automated matches.
-5. **Collaboration formation** – When both accept, a row is inserted into `project_collaborators`, engagement points are awarded, and rating prompts are created for later peer feedback.
-6. **Chat** – Clients connect to FastAPI WebSocket `/ws/{user_id}`; join threads, send messages (persisted in `messages`), broadcast to thread participants, and support typing and read indicators.
-7. **Collaboration limits** – At most two active commitments (pitched + collaborations); enforced by DB trigger on `project_collaborators` and by excluding over-committed users from candidate set. Users can mark a collaboration as completed via “Finish collaboration” (API calls `finish_collaboration`), freeing a slot.
-8. **Inactive users** – Optional freeze of users with long-pending decisions (e.g. 5 weeks) via `freeze_inactive_users()`; frozen users are excluded from recommendations by `account_status = 'active'` in the candidate query.
+1. **Pitch:** Owner creates a project with required skills.
+2. **Recommend:** Backend generates `project_matches` rows (recommended users).
+3. **Decide:** Owner and recommended user accept/reject.
+4. **Collaborate:** When both accept, a collaboration is created (`project_collaborators`).
+5. **Learn:** Decision outcomes update `user_feedback_stats` and improve future scoring.
+6. **Finish:** A collaboration can be marked completed, freeing a slot for new recommendations.
 
 ---
 
 ## 2. Literature Survey
 
-Existing work on collaboration and recommendation informs the design:
+Konverge is inspired by:
 
-- **Collaborative filtering** recommends based on past behaviour (e.g. similar users’ choices). Konverge uses accept/reject history per skill in `user_feedback_stats` as a behavioural signal in the composite score.
-- **Content-based recommendation** matches on attributes (e.g. skills). The implementation compares required skills with user skills and uses overlap relative to required set size as the skill component.
-- **Hybrid recommenders** combine both; Konverge’s scoring is hybrid: skill overlap (content) plus engagement, rating, and accept rate (behaviour).
-- **Platforms** such as GitHub, LinkedIn, Upwork, and Kaggle offer collaboration or matching but lack this combination of skill-based matching, engagement, peer rating, and feedback learning in one product. Konverge implements a unified flow: pitch → auto-recommend → dual accept/reject → feedback learning → collaboration and chat.
+- **Recommender systems:** content-based and hybrid recommenders
+- **Reinforcement-style feedback loops:** learning from user actions (accept/reject)
+- **Trust/reputation systems:** ratings and engagement signals as proxies for reliability
+- **Collaboration platforms:** integrating discovery + messaging + progress tracking
 
 ---
 
 ## 3. Theoretical Background
 
-- **Content-based component** – Project requirements (required_skills) are matched to user profiles (skills). The implemented metric is overlap-based: (|required ∩ user| / |required|) × 100, normalized and clamped for use in the composite score.
-- **Behavioural component** – Engagement score (activity points), average peer rating, and per-skill accept rate from past recommendations are used so that active, highly rated, and historically accepted users rank higher.
-- **Multi-criteria scoring** – The composite score is a weighted sum of (skill, engagement, rating, feedback), with weights 0.5, 0.15, 0.15, 0.2. Engagement and rating are normalized to [0, 100] or similar before applying weights.
-- **Feedback-based learning** – Accept/reject outcomes update `user_feedback_stats`. The accept rate per (user, skill) is used as the feedback component in future recommendations, implementing a simple form of reinforcement from user decisions.
+### Skill matching
+
+Each project lists required skills; each user lists their skills. A basic content score can be derived from normalized overlaps.
+
+### Hybrid scoring
+
+Hybrid recommenders combine multiple signals (e.g. skills + engagement + ratings + feedback acceptance rate) into a composite score, often by weighted sum:
+
+\[
+\text{score} = w_s \cdot \text{skill} + w_e \cdot \text{engagement} + w_r \cdot \text{rating} + w_f \cdot \text{feedback}
+\]
+
+### Commitment limits
+
+To reduce over-commitment, the system enforces a maximum number of concurrent commitments. In Konverge, the limit is **2 total**:
+
+- Open pitched projects (owner)
+- + active collaborations (collaborator)
 
 ---
 
@@ -132,47 +100,25 @@ Existing work on collaboration and recommendation informs the design:
 
 ### 4.1 User Requirements
 
-Target users are students, independent developers, and professionals who want to collaborate on projects. The system assumes:
-
-- Basic computer literacy and use of a modern web browser.
-- Ability to register (name, email, password), complete onboarding (bio, skills, GitHub, LinkedIn), and sign in.
-- Ability to create projects (title, description, required skills), view recommended collaborators, and accept or reject matches.
-- Ability to view “Assigned to me” and “My pitched projects” (matched page), respond to recommendations, and optionally mark collaborations as completed.
-- Ability to use the in-app chat (thread list, open thread, send messages, see typing/read state).
-- Ability to view profile, dashboard analytics, and leaderboard, and to submit peer ratings when prompted.
+- Register and log in with email/password
+- Pitch projects with required skills
+- View recommendations and decide (accept/reject)
+- See pending matches requiring action
+- View collaborations, finish a collaboration when done
+- Chat with other users
+- View analytics and engagement/rating information
 
 ### 4.2 Software Requirements
 
-**Frontend**
-
-- **React 18** and **Next.js 13** (App Router) for UI and routing.
-- **TypeScript** for type safety.
-- **Tailwind CSS** for styling.
-- **Radix UI** (via shadcn-style components) for accessible primitives.
-- **Zustand** (with persist) for client state (e.g. auth).
-- **TanStack Query** for server state and API caching.
-- **NextAuth.js** for authentication (credentials provider, JWT session).
-- **Recharts** for dashboard charts.
-- **Sonner** for toasts.
-- **WebSocket API** (browser) for chat, wrapped in a custom hook (e.g. `useWebSocket`).
-
-**Backend**
-
-- **Python 3** with **FastAPI** for REST and WebSocket APIs.
-- **Uvicorn** as ASGI server.
-- **PostgreSQL** for persistence (connection via `psycopg2`; `DATABASE_URL` or default connection).
-- **Pydantic** for request/response validation.
-
-**APIs**
-
-- Next.js API routes under `pages/api/`: auth (NextAuth), profile, projects, login, register, onboarding, finish-collaboration, user-collaboration-status, user-collaborations, user-status, etc. These use the same PostgreSQL database (e.g. `lib/db` or pool with `DATABASE_URL`).
-- FastAPI at `http://localhost:8000` (or `NEXT_PUBLIC_API_BASE`): projects, matches (pitched, assigned, owner/user decision), threads, messages, users, analytics, ratings, WebSocket at `/ws/{user_id}`.
+- Node.js 18+ (Next.js)
+- Python 3.10+ (FastAPI)
+- PostgreSQL 13+
+- Package managers: npm, pip
 
 ### 4.3 Hardware Requirements
 
-- **Server:** Typical development or production host (e.g. 8 GB RAM, multi-core CPU).
-- **Client:** Laptop or desktop with a modern browser (Chrome, Firefox, Edge) and stable internet.
-- **Database:** PostgreSQL 10+ (or compatible) with sufficient disk for application data.
+- Development machine capable of running Node + Python + Postgres (8GB RAM recommended)
+- Network access for API calls and WebSockets
 
 ---
 
@@ -180,61 +126,132 @@ Target users are students, independent developers, and professionals who want to
 
 ### 5.1 Methodology
 
-**Authentication and session**
+#### 5.1.1 Environment and configuration
 
-- User signs in with email and password. NextAuth credentials provider queries `users` by email and verifies password with bcrypt; the returned user (including `user_id`) is stored in the JWT and session.
-- Frontend stores the user in Zustand (`useAuthStore`) with persistence so the client can pass `user_id` to APIs and the WebSocket.
+Local configuration is stored in `.env.local` (ignored by git). Key variables:
 
-```typescript
-// store/auth-store.ts (simplified)
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      isAuthenticated: false,
-      setUser: (user) => set({ user, isAuthenticated: Boolean(user) }),
-      logout: () => set({ user: null, isAuthenticated: false }),
-    }),
-    { name: 'auth-storage' }
-  )
+- `DATABASE_URL` — shared by Next.js API routes and FastAPI (must match)
+- `NEXTAUTH_SECRET` — NextAuth secret
+- `NEXTAUTH_URL` — site URL (`http://localhost:3000` locally)
+- `NEXT_PUBLIC_API_BASE` — FastAPI base URL (defaults to `http://localhost:8000/api`)
+- `ADMIN_EMAILS` — comma-separated emails allowed to access admin dashboard
+
+FastAPI loads `.env.local` automatically on startup (project root), ensuring it uses the same `DATABASE_URL`.
+
+#### 5.1.2 Authentication (NextAuth Credentials)
+
+- Login UI uses `signIn("credentials")` (`app/auth/page.tsx`).
+- NextAuth verifies credentials by loading the user from Postgres and comparing bcrypt hash (`lib/auth.ts`).
+- Admin status is derived from `ADMIN_EMAILS` and stored on the JWT/session as `isAdmin`.
+
+Snippet (NextAuth route handler):
+
+```ts
+// app/api/auth/[...nextauth]/route.ts
+import NextAuth from "next-auth";
+import { authOptions } from "@/lib/auth";
+
+const handler = NextAuth(authOptions);
+export { handler as GET, handler as POST };
+```
+
+Snippet (admin flag in JWT callback):
+
+```ts
+// lib/auth.ts (excerpt)
+const adminEmails = (process.env.ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+(token.user as AuthUser & { isAdmin?: boolean }).isAdmin =
+  Boolean(email && adminEmails.includes(email));
+```
+
+#### 5.1.3 Frontend data fetching (FastAPI + Next.js API)
+
+Frontend calls FastAPI through `API_BASE`:
+
+```ts
+// lib/api/base.ts
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+```
+
+Next.js API routes (under `pages/api/*`) are used for:
+
+- collaboration status (`/api/user-collaboration-status`)
+- active collaborations list (`/api/user-collaborations`)
+- finish collaboration (`/api/finish-collaboration`)
+- admin stats (`/api/admin/stats`)
+
+#### 5.1.4 Matching workflow UI rules
+
+To keep the UX clear:
+
+- **Matched page → “Assigned to me”** shows only matches where a decision is still pending:
+  - owner pending **or** user pending
+- Once both accept and a collaboration is active, it appears in:
+  - **Profile → Matched** (active collaborations only) with a Finish button
+
+Snippet (pending-only filtering):
+
+```ts
+// app/matched/page.tsx (excerpt)
+const matches = useMemo(
+  () => allMatches.filter((m) => m.ownerDecision === "pending" || m.userDecision === "pending"),
+  [allMatches]
 );
 ```
 
-**Project creation and recommendation trigger**
+#### 5.1.5 Collaborations and finishing
 
-- When a project is created (e.g. POST to FastAPI `/api/projects` or Next.js API), the backend inserts into `projects`, adds engagement points for pitching, and calls `generate_recommendations_for_project(project_id)`.
+Active collaborations come from `project_collaborators.status = 'active'` via:
 
-**Candidate filtering**
+- `GET /api/user-collaborations?userId=...`
 
-- Candidates are fetched with a single SQL query: exclude owner, require `account_status = 'active'`, and require (active collaborations + open pitched projects) < 2.
+Finishing uses:
 
-```python
-# backend/main.py (concept)
-WHERE u.user_id <> %s
-  AND u.account_status = 'active'
-  AND (COALESCE(pc.active_count, 0) + COALESCE(pp.open_projects, 0)) < 2
+- `POST /api/finish-collaboration` → calls SQL function `finish_collaboration(user_id, project_id)` and marks row `completed`.
+
+#### 5.1.6 Admin dashboard (platform-wide stats)
+
+Admin access is environment-driven:
+
+- `ADMIN_EMAILS` controls who can view admin pages and stats.
+
+API:
+
+- `GET /api/admin/stats` (admin-only)
+
+Computes:
+
+- project counts (open/total)
+- collaboration counts (active/completed)
+- user counts (active/frozen/total)
+- new users (30 days, requires `users.created_at`)
+- acceptance/rejection rates for owner/user decisions
+
+Snippet (admin check):
+
+```ts
+// pages/api/admin/stats.ts (excerpt)
+const session = await getServerSession(req, res, authOptions);
+if (!session?.user?.email || !isAdminEmail(session.user.email)) {
+  return res.status(403).json({ error: "Admin access required" });
+}
 ```
 
-**Skill match score**
+Admin dashboard UI:
 
-- Required and user skills are normalized (lowercase, stripped). The score is overlap over required set size, scaled to 0–100.
+- Route: `app/admin/dashboard/page.tsx` (reads `/api/admin/stats`)
+- Admin link in sidebar is shown only when `user.isAdmin` is true (derived from `ADMIN_EMAILS`)
 
-```python
-# backend/main.py
-def calculate_skill_match_score(required_skills: List[str], candidate_skills: List[str]) -> float:
-    if not required_skills or not candidate_skills:
-        return 0.0
-    required_set = set(_normalize_skills(required_skills))
-    candidate_set = set(_normalize_skills(candidate_skills))
-    if not required_set or not candidate_set:
-        return 0.0
-    overlap = len(required_set & candidate_set)
-    return round((overlap / len(required_set)) * 100, 2)
-```
+#### 5.1.7 Recommendation algorithm and feedback learning
 
-**Composite score and weights**
+The backend (`backend/main.py`) implements the full recommendation and feedback loop.
 
-- For each candidate and each required skill, the engine loads engagement, rating, and feedback accept rate (from `user_feedback_stats`), clamps them to [0,1] or equivalent, and computes:
+**Weights:**
 
 ```python
 # backend/main.py
@@ -244,7 +261,41 @@ RECOMMENDATION_WEIGHTS = {
     "rating": 0.15,
     "feedback": 0.2,
 }
+```
 
+**Skill match score** — overlap of required skills vs candidate skills (normalized 0–100):
+
+```python
+def calculate_skill_match_score(required_skills: List[str], candidate_skills: List[str]) -> float:
+    if not required_skills or not candidate_skills:
+        return 0.0
+    required_set = set(_normalize_skills(required_skills))
+    candidate_set = set(_normalize_skills(candidate_skills))
+    overlap = len(required_set & candidate_set)
+    return round((overlap / len(required_set)) * 100, 2)
+```
+
+**Candidate fetching** — active users under commitment limit (open pitched projects + active collaborations &lt; 2):
+
+```python
+def fetch_candidate_users(cursor, owner_id: int):
+    cursor.execute("""
+        SELECT u.user_id, u.name, u.email, u.skills, u.rating, u.engagement_score,
+               COALESCE(pc.active_count, 0) AS active_collaborations,
+               COALESCE(pp.open_projects, 0) AS pitched_projects
+        FROM users u
+        LEFT JOIN (...) pc ON u.user_id = pc.user_id
+        LEFT JOIN (...) pp ON u.user_id = pp.owner_id
+        WHERE u.user_id <> %s AND u.account_status = 'active'
+          AND (COALESCE(pc.active_count, 0) + COALESCE(pp.open_projects, 0)) < 2
+    """, (owner_id,))
+    return cursor.fetchall()
+```
+
+**Composite score** — weighted sum used to rank recommendations:
+
+```python
+# For each candidate and each required skill:
 skill_component = skill_match_score * RECOMMENDATION_WEIGHTS["skill"]
 engagement_component = clamp(engagement / 100.0, 0.0, 1.0) * 100.0 * RECOMMENDATION_WEIGHTS["engagement"]
 rating_component = clamp(rating / 5.0, 0.0, 1.0) * 100.0 * RECOMMENDATION_WEIGHTS["rating"]
@@ -252,156 +303,86 @@ feedback_component = clamp(feedback_score, 0.0, 1.0) * 100.0 * RECOMMENDATION_WE
 composite_score = skill_component + engagement_component + rating_component + feedback_component
 ```
 
-- Candidates are sorted by composite score; up to three per required skill are kept (per user, best composite retained), then all recommendations are written to `project_matches` with `owner_decision` and `user_decision` set to `'pending'`.
+`feedback_score` comes from `user_feedback_stats.accept_rate` for that user and skill bucket.
 
-**Owner and user decisions**
-
-- Owner and recommended user submit decisions via PATCH to `/api/matches/{match_id}/owner` and `/api/matches/{match_id}/user`. The backend updates `project_matches` and inserts into `match_feedback`; for automated matches it updates `user_feedback_stats`. When both decisions are `'accepted'`, `sync_collaboration_if_ready` inserts into `project_collaborators`, awards engagement points, and creates rating prompts.
-
-**Real-time chat**
-
-- Backend holds a `ConnectionManager`: map of `user_id` → WebSocket. Client connects to `ws://localhost:8000/ws/{user_id}`. Messages: `join_thread`, `leave_thread`, `send_message` (persist in `messages`, broadcast to thread), `typing`, `mark_read`. Thread list and message history are served by GET `/api/threads/{user_id}` and GET `/api/messages/{thread_id}`.
+**Feedback learning** — when owner or user accepts/rejects an automated recommendation:
 
 ```python
-# backend/main.py (WebSocket message handling)
-elif message_type == "send_message":
-    thread_id = data.get("thread_id")
-    content = data.get("content")
-    # INSERT into messages, then broadcast to thread participants
-    await manager.send_personal_message(broadcast_message, user_id)
-    await manager.broadcast_to_thread(thread_id, broadcast_message, exclude_user=user_id)
+def record_feedback_signal(cursor, user_id, required_skill, accepted: bool):
+    skill_bucket = get_feedback_skill_bucket(required_skill)  # e.g. "python" or "general"
+    upsert_feedback_stat(cursor, user_id, skill_bucket, accepted)
+
+def upsert_feedback_stat(cursor, user_id, skill_bucket, accepted):
+    # Upserts user_feedback_stats: increments total_recommendations,
+    # accepted_count or rejected_count, and recomputes accept_rate
+    # ON CONFLICT (user_id, skill) DO UPDATE SET ...
 ```
 
-**Collaboration limit and finish**
+`record_feedback_signal` is called from both owner-decision and user-decision endpoints when `source_type == 'automated'`. This updates `user_feedback_stats`, which is then loaded by `load_feedback_stats` for future recommendation runs.
 
-- Schema trigger `check_collaboration_limit` prevents inserting into `project_collaborators` when the user already has two active commitments (active collaborations + open projects as owner). Users see active collaborations on the profile (CollaborationManager) and can call “Finish collaboration”; the API invokes `finish_collaboration(user_id, project_id)`, which sets that row’s status to `'completed'`.
+**Collaboration sync** — when both owner and user accept, create/activate collaboration:
 
-```sql
--- schema_updates.sql
-CREATE OR REPLACE FUNCTION finish_collaboration(p_user_id INT, p_project_id INT)
-RETURNS BOOLEAN AS $$
-BEGIN
-    UPDATE project_collaborators
-    SET status = 'completed', updated_at = CURRENT_TIMESTAMP
-    WHERE user_id = p_user_id AND project_id = p_project_id AND status = 'active';
-    RETURN FOUND;
-END;
-$$ LANGUAGE plpgsql;
+```python
+def sync_collaboration_if_ready(cursor, match_row):
+    if match_row["owner_decision"] == "accepted" and match_row["user_decision"] == "accepted":
+        # If collaboration exists and completed → reactivate
+        # Else if no row → INSERT new project_collaborators row with status='active'
+        # Award engagement points, ensure_rating_prompt for both parties
 ```
 
-**Frontend API usage**
+Called after both `PATCH /api/matches/{match_id}/owner` and `PATCH /api/matches/{match_id}/user`.
 
-- The frontend uses a single API base URL (e.g. `http://localhost:8000/api`) for FastAPI. Matches are fetched and updated via this base.
+**Recommendation generation** (`generate_recommendations_for_project`):
 
-```typescript
-// lib/api/base.ts
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
-
-// lib/api/matches.ts
-export async function getPitchedMatches(ownerId: number | string): Promise<PitchedProjectMatches[]> {
-  const res = await fetch(`${API_BASE}/matches/pitched?owner_id=${ownerId}`);
-  const data = await handleResponse<{ projects: { project: any; matches: any[] }[] }>(res);
-  // ...
-}
-```
+1. Fetch project and required skills.
+2. Delete existing `project_matches` for that project.
+3. Fetch candidates via `fetch_candidate_users`.
+4. Load feedback stats via `load_feedback_stats`.
+5. For each required skill (or `["general"]` if none), filter candidates, compute composite score, keep top 3 per skill, and merge into `user_best_recommendations` (best score per user).
+6. Sort by composite score, insert rows into `project_matches` with `source_type='automated'`.
 
 ### 5.2 Import Required Libraries and Modules
 
-**Backend (Python) – `backend/main.py`**
+#### Frontend (Node/TypeScript)
 
-| Import | Purpose |
-|--------|--------|
-| `fastapi` | FastAPI, WebSocket, HTTPException, Depends |
-| `fastapi.middleware.cors` | CORSMiddleware |
-| `fastapi.security` | HTTPBearer, HTTPAuthorizationCredentials |
-| `typing` | Dict, Set, List, Optional, Tuple |
-| `json` | JSON serialization |
-| `datetime` | datetime, timedelta |
-| `collections` | defaultdict |
-| `psycopg2` | PostgreSQL connection |
-| `psycopg2.extras` | RealDictCursor |
-| `contextlib` | asynccontextmanager |
-| `pydantic` | BaseModel, validator |
-| `time` | Cache timestamps |
-| `os` | getenv (e.g. DATABASE_URL) |
+Common libraries:
 
-Example from the top of `main.py`:
+- `next`, `react`, `typescript`
+- `next-auth` for authentication
+- `pg` for Next.js API routes talking to Postgres
+- `@tanstack/react-query` for client data fetching/caching
+- `zustand` for client-side auth/user state
+- `tailwindcss` and shadcn/Radix UI components
 
-```python
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Dict, Set, List, Optional, Tuple
-import json
-from datetime import datetime, timedelta
-from collections import defaultdict
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from contextlib import asynccontextmanager
-from pydantic import BaseModel, validator
-import time
-import os
-```
+#### Backend (Python)
 
-**Frontend (TypeScript/React) – representative modules**
+FastAPI backend (`backend/main.py`) imports:
 
-| Module | Purpose |
-|--------|--------|
-| `next` | App Router, routing, API routes |
-| `react`, `react-dom` | UI components |
-| `@tanstack/react-query` | useQuery, useMutation, useQueryClient |
-| `zustand` | useAuthStore, useUIStore |
-| `next-auth` | Auth (used via API route; session not always used in every page) |
-| `@/lib/api/base` | API_BASE, handleResponse |
-| `@/lib/api/matches` | getPitchedMatches, getAssignedMatches, updateMatchDecision |
-| `@/store/auth-store` | useAuthStore (user, logout, isAuthenticated) |
-| `recharts` | LineChart, AreaChart, BarChart, PieChart, etc. |
-| `lucide-react` | Icons (Users, Briefcase, Star, etc.) |
-| `sonner` | toast |
-| `@/hooks/useWebSocket` | useWebSocket (url, userId, onMessage, onConnect) |
-
-Example (dashboard page):
-
-```typescript
-import { useQuery } from "@tanstack/react-query";
-import { useAuthStore } from "@/store/auth-store";
-import { API_BASE, handleResponse } from "@/lib/api/base";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { LineChart, AreaChart, BarChart, PieChart, ... } from "recharts";
-import { Users, Briefcase, Star, TrendingUp, ... } from "lucide-react";
-```
-
-**Next.js API routes and auth**
-
-- `lib/auth.ts`: NextAuth options, CredentialsProvider, bcrypt, pool from `lib/db`.
-- `lib/db.ts`: `pg` Pool with `DATABASE_URL` or default.
-- `pages/api/*.ts`: `Pool` from `pg` or `lib/db`, `NextApiRequest`, `NextApiResponse`.
-
-### 5.3 Admin dashboard
-
-The admin dashboard provides platform-wide statistics for operators. Access is restricted to users whose email is listed in the `ADMIN_EMAILS` environment variable (comma-separated, case-insensitive; e.g. `ADMIN_EMAILS=admin@konverge.com,super@konverge.com`). No trailing spaces; only these emails can open the admin dashboard or call the admin stats API.
-
-- **Purpose:** View aggregate metrics: open/total projects, active/completed collaborations, frozen/active/total users, new users in the past 30 days, and owner/user acceptance and rejection rates from `project_matches`.
-- **How to enable:** Set `ADMIN_EMAILS` in your environment (e.g. in `.env.local` or server env) with the allowed admin emails.
-- **Where to find it:** Route `/admin/dashboard`; the sidebar shows an “Admin” link (with a shield icon) only when the logged-in user is an admin (`user.isAdmin` from session).
-- **Access control:** The session callback in `lib/auth.ts` sets `session.user.isAdmin` by checking the user’s email against `ADMIN_EMAILS`. The API `GET /api/admin/stats` uses `getServerSession` and returns `403 Forbidden` if the user is not in `ADMIN_EMAILS`; the dashboard page shows “Access denied” when it receives 403.
+- `fastapi`, `uvicorn`
+- `psycopg2` + `RealDictCursor`
+- `websockets` (WebSocket usage via FastAPI)
+- `python-dotenv` to load `.env.local`
+- `pydantic` for request/response models
 
 ---
 
 ## 6. Partial or Tentative Results
 
-The following reflects the current implementation and behaviour.
+The current implementation supports:
 
-- **Authentication** – Users can register and log in; session and auth store persist the user; protected routes and sidebar use `isAuthenticated` and `user`.
-- **Projects** – Projects can be created with required skills; they appear under “My pitched projects” and in the discover list; the backend generates recommendations and stores them in `project_matches`.
-- **Matching** – Owners see recommended collaborators per project with skill match score, engagement, and rating; they can accept or reject. Recommended users see matches under “Assigned to me” and can accept or reject; the “Accept” button is disabled when the user has reached the collaboration limit (two commitments), with a tooltip and optional toast explaining the limit.
-- **Collaboration formation** – When both parties accept, a row is created in `project_collaborators`, engagement points are awarded, and rating prompts are created. The collaboration limit (e.g. trigger and candidate filter) prevents users from exceeding two active commitments.
-- **Collaboration completion** – Users can mark a collaboration as completed from the profile (CollaborationManager) via “Finish collaboration,” which calls the finish-collaboration API and updates `project_collaborators.status` to `'completed'`, freeing a slot.
-- **Chat** – Users can open the Messages page, see thread list (GET `/api/threads/{user_id}`), select a thread, and send messages over WebSocket; messages are persisted and broadcast to thread participants; typing and read indicators are supported.
-- **Analytics dashboard** – The dashboard fetches `/api/analytics/user/{id}` and displays overview metrics (total collaborations, active projects, rating, engagement score, response rate), engagement trend, rating progress, collaboration frequency, skills distribution, project types, and application stats (accepted/rejected/pending). Data may be cached for a short period on the backend.
-- **Leaderboard** – Implemented to show users ranked by engagement or similar metrics (implementation detail in the leaderboard page and API).
-- **Peer ratings** – Pending ratings are shown (e.g. on profile); users can submit a score and optional feedback; the backend updates `user_ratings` and recalculates the user’s average rating.
-- **Inactive users** – The `freeze_inactive_users()` function and related API (e.g. POST `/api/user-status`) can set `account_status` to `'frozen'` for users with long-pending decisions; frozen users are excluded from the candidate set. Unfreeze is supported via a PATCH endpoint.
-- **Admin dashboard** – Users whose email is in `ADMIN_EMAILS` see an “Admin” link in the sidebar and can open `/admin/dashboard` to view platform-wide stats (projects, collaborations, users, new users in 30 days, acceptance/rejection rates). The API `GET /api/admin/stats` returns 403 for non-admin users.
+- **Auth:** NextAuth credentials login against Postgres `users.password_hash`
+- **Project pitching & discovery:** projects stored in `projects` with required skills
+- **Matching decisions:** dual decisions stored in `project_matches`
+- **Pending match UX:** Matched page shows only items still requiring action
+- **Collaboration lifecycle:** active collaborations in `project_collaborators`; finish collaboration marks completed and frees capacity
+- **Collaboration limits:** enforced with SQL view/trigger logic in `schema_updates.sql`
+- **Analytics:** user analytics endpoint in FastAPI and UI dashboard (data availability depends on DB contents)
+- **Admin dashboard:** platform-wide stats gated by `ADMIN_EMAILS`
 
-The system runs end-to-end with a single PostgreSQL database (shared by Next.js API routes and FastAPI when `DATABASE_URL` is set consistently), a Next.js frontend, and a FastAPI backend with WebSocket support. Synthetic data from `init_db.sql` (and optionally `populate_demo_data.py`) is used for development and testing.
+### Operational notes
+
+- If login redirects to `/api/auth/error` with a 404, the NextAuth route handler file is missing:
+  - `app/api/auth/[...nextauth]/route.ts`
+- Admin dashboard lives at `/admin/dashboard` (`app/admin/dashboard/page.tsx`). Ensure `ADMIN_EMAILS` includes your email in `.env.local` to see the Admin link.
+- If FastAPI data appears empty while Next.js APIs show data, ensure both use the same `DATABASE_URL`. FastAPI loads `.env.local` from the project root at startup.
+

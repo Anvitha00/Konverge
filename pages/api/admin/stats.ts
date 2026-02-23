@@ -74,6 +74,9 @@ export default async function handler(
         ]);
 
       let newUsers = 0;
+      let usersByDay: { date: string; count: number }[] = [];
+      let projectsByDay: { date: string; count: number }[] = [];
+
       try {
         const newUsersResult = await client.query(`
           SELECT COUNT(*) AS new_users
@@ -83,6 +86,38 @@ export default async function handler(
         newUsers = Number(newUsersResult.rows[0]?.new_users ?? 0);
       } catch {
         // created_at may not exist until migration is applied
+      }
+
+      try {
+        const usersByDayResult = await client.query(`
+          SELECT date_trunc('day', created_at)::date AS day, COUNT(*)::int AS count
+          FROM users
+          WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+          GROUP BY date_trunc('day', created_at)::date
+          ORDER BY day
+        `);
+        usersByDay = (usersByDayResult.rows ?? []).map((r: { day: Date; count: number }) => ({
+          date: new Date(r.day).toISOString().split("T")[0],
+          count: Number(r.count),
+        }));
+      } catch {
+        // created_at may not exist
+      }
+
+      try {
+        const projectsByDayResult = await client.query(`
+          SELECT date_trunc('day', created_at)::date AS day, COUNT(*)::int AS count
+          FROM projects
+          WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+          GROUP BY date_trunc('day', created_at)::date
+          ORDER BY day
+        `);
+        projectsByDay = (projectsByDayResult.rows ?? []).map((r: { day: Date; count: number }) => ({
+          date: new Date(r.day).toISOString().split("T")[0],
+          count: Number(r.count),
+        }));
+      } catch {
+        // created_at may not exist on projects
       }
 
       const projects = projectsRow.rows[0];
@@ -124,6 +159,8 @@ export default async function handler(
         rejectionRateOwner,
         acceptanceRateUser,
         rejectionRateUser,
+        usersByDay,
+        projectsByDay,
       });
     } finally {
       client.release();

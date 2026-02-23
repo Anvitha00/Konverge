@@ -125,3 +125,7 @@ HAVING COUNT(pm.match_id) > 0;
 -- Add created_at to users for "new users in past month" admin stat
 ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;
+
+-- Ensure projects has created_at for admin growth charts (in case of older schema)
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+UPDATE projects SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;
