@@ -770,7 +770,19 @@ async def lifespan(app: FastAPI):
     print("👋 Application shutting down")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="Konverge API")
+
+
+@app.get("/")
+async def root():
+    """Root endpoint - API info and links"""
+    return {
+        "message": "Konverge API",
+        "docs": "/docs",
+        "health": "/health",
+        "test": "/api/test",
+    }
+
 
 app.add_middleware(
     CORSMiddleware,
