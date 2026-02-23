@@ -150,10 +150,11 @@ export default function ProfilePage() {
     refetchInterval: 15000,
   });
 
+  const matchedUserId = user?.id ?? userId ?? "";
   const { data: matchedProjects, isLoading: matchedLoading } = useQuery({
-    queryKey: ["user-projects", user?.id ?? userId, "matched"],
-    queryFn: () => getUserProjects(user?.id ?? userId, "matched"),
-    enabled: !!user,
+    queryKey: ["user-projects", matchedUserId, "matched"],
+    queryFn: () => getUserProjects(matchedUserId, "matched"),
+    enabled: !!user && !!matchedUserId,
     refetchInterval: 15000,
   });
 
