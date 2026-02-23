@@ -163,7 +163,7 @@ export function PitchedProjectsList({
                     <div className="flex flex-wrap items-center gap-2 justify-between">
                       <div className="flex flex-wrap gap-2">
                         {match.recommendedUser.skills?.map((skill) => (
-                          <Badge key={skill} variant="ghost" className="text-xs">
+                          <Badge key={skill} variant="outline" className="text-xs">
                             {skill}
                           </Badge>
                         ))}
