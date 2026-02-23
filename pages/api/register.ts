@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import pool from '@/lib/db';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
