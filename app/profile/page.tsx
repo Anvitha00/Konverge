@@ -42,7 +42,6 @@ import {
   calculateProfileCompleteness,
 } from "@/lib/utils";
 import type { Project, User } from "@/types";
-import type { RecommendedMatch } from "@/lib/api/matches";
 import {
   Dialog,
   DialogContent,
