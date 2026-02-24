@@ -593,7 +593,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (threads.length > 0 && !activeChatThread) {
-      const threadId = searchParams ? searchParams.get("thread") : null;
+      const threadId = searchParams?.get("thread") || null;
       if (threadId && threads.some((t) => t.thread_id === threadId)) {
         setActiveChatThread(threadId);
       } else {
