@@ -593,7 +593,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (threads.length > 0 && !activeChatThread) {
-      const threadId = searchParams.get("thread");
+      const threadId = searchParams ? searchParams.get("thread") : null;
       if (threadId && threads.some((t) => t.thread_id === threadId)) {
         setActiveChatThread(threadId);
       } else {
@@ -622,17 +622,6 @@ export default function ChatPage() {
       return { ...old, threads: updated };
     });
   }, [activeChatThread, messages?.length, user?.user_id, queryClient]);
-
-  // Handle thread query param from URL
-  useEffect(() => {
-    const threadId = searchParams.get("thread");
-    if (threadId && threads.length > 0) {
-      const threadExists = threads.some((t) => t.thread_id === threadId);
-      if (threadExists) {
-        setActiveChatThread(threadId);
-      }
-    }
-  }, [searchParams, threads, setActiveChatThread]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
