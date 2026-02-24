@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageCircle, Search, Send, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,9 +17,17 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/auth-store";
 import { useUIStore } from "@/store/ui-store";
-import { formatRelativeTime, formatDateTime, formatTime, formatDayLabel, getInitials } from "@/lib/utils";
+import {
+  formatRelativeTime,
+  formatDateTime,
+  formatTime,
+  formatDayLabel,
+  getInitials,
+} from "@/lib/utils";
 import { toast } from "sonner";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useSearchParams } from "next/navigation";
+import { API_BASE, WS_BASE } from "@/lib/api/base";
 
 interface User {
   id: string;
@@ -46,8 +60,8 @@ interface Thread {
   updated_at: string;
 }
 
-const WS_URL = "ws://localhost:8000/ws";
-const API_URL = "http://localhost:8000/api";
+const WS_URL = WS_BASE;
+const API_URL = API_BASE;
 
 // Stable, memoized child components to avoid remounts that can steal input focus
 const ThreadsList = React.memo(function ThreadsListComponent({
@@ -79,7 +93,7 @@ const ThreadsList = React.memo(function ThreadsListComponent({
     return threads.filter(
       (thread) =>
         thread.title?.toLowerCase().includes(query) ||
-        thread.participants.some((p) => p.name.toLowerCase().includes(query))
+        thread.participants.some((p) => p.name.toLowerCase().includes(query)),
     );
   }, [threads, searchQuery]);
 
@@ -89,10 +103,19 @@ const ThreadsList = React.memo(function ThreadsListComponent({
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Messages</h2>
           <div className="flex items-center gap-2">
-            <Button size="icon" variant="ghost" onClick={reconnect} disabled={isConnected}>
-              <RefreshCw className={`h-4 w-4 ${isConnected ? "" : "animate-spin"}`} />
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={reconnect}
+              disabled={isConnected}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${isConnected ? "" : "animate-spin"}`}
+              />
             </Button>
-            <div className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`} />
+            <div
+              className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
+            />
           </div>
         </div>
         <div className="relative">
@@ -119,12 +142,14 @@ const ThreadsList = React.memo(function ThreadsListComponent({
         ) : filteredThreads.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">{searchQuery ? "No conversations found" : "No conversations yet"}</p>
+            <p className="text-sm">
+              {searchQuery ? "No conversations found" : "No conversations yet"}
+            </p>
           </div>
         ) : (
           filteredThreads.map((thread) => {
             const otherParticipants = thread.participants.filter(
-              (p) => p.id !== user?.user_id?.toString()
+              (p) => p.id !== user?.user_id?.toString(),
             );
             const isActive = thread.thread_id === activeChatThread;
             return (
@@ -155,15 +180,20 @@ const ThreadsList = React.memo(function ThreadsListComponent({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-medium truncate">
-                        {otherParticipants.map((p) => p.name).join(", ") || "Chat"}
+                        {otherParticipants.map((p) => p.name).join(", ") ||
+                          "Chat"}
                       </h3>
                       <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {thread.last_message && formatRelativeTime(thread.last_message.createdAt)}
+                        {thread.last_message &&
+                          formatRelativeTime(thread.last_message.createdAt)}
                       </span>
                     </div>
                     {thread.last_message && (
                       <p className="text-sm text-muted-foreground truncate">
-                        {thread.last_message.senderId === user?.user_id?.toString() ? "You: " : ""}
+                        {thread.last_message.senderId ===
+                        user?.user_id?.toString()
+                          ? "You: "
+                          : ""}
                         {thread.last_message.content}
                       </p>
                     )}
@@ -223,15 +253,15 @@ const ChatWindow = React.memo(function ChatWindowComponent({
                 <AvatarImage
                   src={
                     activeThread.participants.find(
-                      (p) => p.id !== user?.user_id?.toString()
+                      (p) => p.id !== user?.user_id?.toString(),
                     )?.avatar
                   }
                 />
                 <AvatarFallback>
                   {getInitials(
                     activeThread.participants.find(
-                      (p) => p.id !== user?.user_id?.toString()
-                    )?.name || ""
+                      (p) => p.id !== user?.user_id?.toString(),
+                    )?.name || "",
                   )}
                 </AvatarFallback>
               </Avatar>
@@ -284,13 +314,18 @@ const ChatWindow = React.memo(function ChatWindowComponent({
                     message.senderId === user?.user_id?.toString() ||
                     message.senderId == user?.user_id;
                   const showAvatar =
-                    index === 0 || messages[index - 1].senderId !== message.senderId;
+                    index === 0 ||
+                    messages[index - 1].senderId !== message.senderId;
                   const currentLabel = formatDayLabel(message.createdAt);
-                  const prevLabel = index > 0 ? formatDayLabel(messages[index - 1].createdAt) : null;
-                  const showDaySeparator = index === 0 || currentLabel !== prevLabel;
+                  const prevLabel =
+                    index > 0
+                      ? formatDayLabel(messages[index - 1].createdAt)
+                      : null;
+                  const showDaySeparator =
+                    index === 0 || currentLabel !== prevLabel;
                   return (
                     <div key={message.id}>
-                      {showDaySeparator && currentLabel !== 'Today' && (
+                      {showDaySeparator && currentLabel !== "Today" && (
                         <div className="flex items-center gap-2 my-2">
                           <div className="h-px flex-1 bg-border" />
                           <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -302,49 +337,53 @@ const ChatWindow = React.memo(function ChatWindowComponent({
                       <div
                         className={`flex gap-3 ${isOwnMessage ? "justify-end" : "justify-start"}`}
                       >
-                      {!isOwnMessage &&
-                        (showAvatar ? (
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={message.sender.avatar} />
-                            <AvatarFallback>
-                              {getInitials(message.sender.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                        ) : (
-                          <div className="h-8 w-8" />
-                        ))}
-                      <div
-                        className={`flex flex-col ${isOwnMessage ? "items-end" : "items-start"} max-w-[70%]`}
-                      >
-                        {showAvatar && (
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-sm font-medium">
-                              {isOwnMessage ? "You" : message.sender.name}
-                            </span>
-                          </div>
-                        )}
+                        {!isOwnMessage &&
+                          (showAvatar ? (
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={message.sender.avatar} />
+                              <AvatarFallback>
+                                {getInitials(message.sender.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                          ) : (
+                            <div className="h-8 w-8" />
+                          ))}
                         <div
-                          className={`rounded-2xl px-4 py-2 ${
-                            isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
-                          }`}
+                          className={`flex flex-col ${isOwnMessage ? "items-end" : "items-start"} max-w-[70%]`}
                         >
-                          <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                          {showAvatar && (
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-medium">
+                                {isOwnMessage ? "You" : message.sender.name}
+                              </span>
+                            </div>
+                          )}
+                          <div
+                            className={`rounded-2xl px-4 py-2 ${
+                              isOwnMessage
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted"
+                            }`}
+                          >
+                            <p className="text-sm whitespace-pre-wrap break-words">
+                              {message.content}
+                            </p>
+                          </div>
+                          <span className="mt-1 text-[11px] text-muted-foreground">
+                            {formatTime(message.createdAt)}
+                          </span>
                         </div>
-                        <span className="mt-1 text-[11px] text-muted-foreground">
-                          {formatTime(message.createdAt)}
-                        </span>
-                      </div>
-                      {isOwnMessage &&
-                        (showAvatar ? (
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage src={message.sender.avatar} />
-                            <AvatarFallback>
-                              {getInitials(message.sender.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                        ) : (
-                          <div className="h-8 w-8" />
-                        ))}
+                        {isOwnMessage &&
+                          (showAvatar ? (
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={message.sender.avatar} />
+                              <AvatarFallback>
+                                {getInitials(message.sender.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                          ) : (
+                            <div className="h-8 w-8" />
+                          ))}
                       </div>
                     </div>
                   );
@@ -359,13 +398,19 @@ const ChatWindow = React.memo(function ChatWindowComponent({
                 ref={inputRef}
                 value={newMessage}
                 onChange={handleInputChange}
-                placeholder={isConnected ? "Type your message..." : "Connecting..."}
+                placeholder={
+                  isConnected ? "Type your message..." : "Connecting..."
+                }
                 className="flex-1"
                 disabled={!isConnected}
                 maxLength={2000}
                 autoComplete="off"
               />
-              <Button type="submit" size="icon" disabled={!isConnected || !newMessage.trim()}>
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!isConnected || !newMessage.trim()}
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </form>
@@ -394,6 +439,7 @@ export default function ChatPage() {
     isChatSidebarOpen,
     setChatSidebarOpen,
   } = useUIStore();
+  const searchParams = useSearchParams();
   const [newMessage, setNewMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -428,8 +474,14 @@ export default function ChatPage() {
       const json = await res.json();
       const normalized = (json?.messages || []).map((m: any) => ({
         id: m.id?.toString?.() ?? m.id,
-        threadId: m.threadId?.toString?.() ?? m.thread_id?.toString?.() ?? activeChatThread,
-        senderId: m.senderId?.toString?.() ?? m.sender_id?.toString?.() ?? m.sender?.id?.toString?.(),
+        threadId:
+          m.threadId?.toString?.() ??
+          m.thread_id?.toString?.() ??
+          activeChatThread,
+        senderId:
+          m.senderId?.toString?.() ??
+          m.sender_id?.toString?.() ??
+          m.sender?.id?.toString?.(),
         content: m.content ?? "",
         createdAt: m.createdAt ?? m.created_at ?? new Date().toISOString(),
         sender: {
@@ -452,7 +504,7 @@ export default function ChatPage() {
       if (data.type === "new_message") {
         console.log(
           "💬 Processing new message for thread:",
-          data.message.threadId
+          data.message.threadId,
         );
 
         queryClient.setQueryData(
@@ -462,7 +514,7 @@ export default function ChatPage() {
             if (!old) return { messages: [data.message] };
 
             const exists = old.messages.some(
-              (m: Message) => m.id === data.message.id
+              (m: Message) => m.id === data.message.id,
             );
 
             if (exists) {
@@ -472,7 +524,7 @@ export default function ChatPage() {
 
             console.log("✅ Adding new message to cache");
             return { messages: [...old.messages, data.message] };
-          }
+          },
         );
 
         // Invalidate to force re-render
@@ -484,7 +536,9 @@ export default function ChatPage() {
         console.log("Joined thread:", data.thread_id);
       } else if (data.type === "user_typing") {
         if (data.is_typing) {
-          setTypingUsers((prev) => new Set(Array.from(prev).concat(data.user_id)));
+          setTypingUsers(
+            (prev) => new Set(Array.from(prev).concat(data.user_id)),
+          );
           setTimeout(() => {
             setTypingUsers((prev) => {
               const next = new Set(prev);
@@ -501,7 +555,7 @@ export default function ChatPage() {
         }
       }
     },
-    [queryClient, refetchThreads]
+    [queryClient, refetchThreads],
   );
 
   const {
@@ -539,9 +593,14 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (threads.length > 0 && !activeChatThread) {
-      setActiveChatThread(threads[0].thread_id);
+      const threadId = searchParams.get("thread");
+      if (threadId && threads.some((t) => t.thread_id === threadId)) {
+        setActiveChatThread(threadId);
+      } else {
+        setActiveChatThread(threads[0].thread_id);
+      }
     }
-  }, [threads, activeChatThread, setActiveChatThread]);
+  }, [threads, activeChatThread, setActiveChatThread, searchParams]);
 
   // ISSUE #3 FIX: Clear input when switching threads
   useEffect(() => {
@@ -558,11 +617,22 @@ export default function ChatPage() {
     queryClient.setQueryData(["threads", user?.user_id], (old: any) => {
       if (!old?.threads) return old;
       const updated = old.threads.map((t: Thread) =>
-        t.thread_id === activeChatThread ? { ...t, unread_count: 0 } : t
+        t.thread_id === activeChatThread ? { ...t, unread_count: 0 } : t,
       );
       return { ...old, threads: updated };
     });
   }, [activeChatThread, messages?.length, user?.user_id, queryClient]);
+
+  // Handle thread query param from URL
+  useEffect(() => {
+    const threadId = searchParams.get("thread");
+    if (threadId && threads.length > 0) {
+      const threadExists = threads.some((t) => t.thread_id === threadId);
+      if (threadExists) {
+        setActiveChatThread(threadId);
+      }
+    }
+  }, [searchParams, threads, setActiveChatThread]);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -684,9 +754,9 @@ export default function ChatPage() {
   const activeThread = threads.find((t) => t.thread_id === activeChatThread);
   const currentThreadTypingUsers =
     activeThread?.participants.filter(
-      (p) => typingUsers.has(p.id) && p.id !== user?.user_id?.toString()
+      (p) => typingUsers.has(p.id) && p.id !== user?.user_id?.toString(),
     ) || [];
-  
+
   return (
     <div className="h-[calc(100vh-4rem)] flex">
       <div className="lg:hidden w-full">
