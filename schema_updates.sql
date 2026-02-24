@@ -51,26 +51,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to freeze inactive users (5 weeks no response)
+-- Function to freeze inactive users (4 weeks no response)
 CREATE OR REPLACE FUNCTION freeze_inactive_users()
 RETURNS INT AS $$
 DECLARE
     frozen_count INT := 0;
 BEGIN
-    -- Freeze users who haven't responded to any project matches in 5 weeks
+    -- Freeze users who haven't responded to any project matches in 4 weeks
     UPDATE users
     SET account_status = 'frozen'
     WHERE user_id IN (
         SELECT DISTINCT pm.recommended_user_id
         FROM project_matches pm
         WHERE pm.user_decision = 'pending'
-          AND pm.created_at < CURRENT_TIMESTAMP - INTERVAL '5 weeks'
+          AND pm.created_at < CURRENT_TIMESTAMP - INTERVAL '4 weeks'  -- Changed from 5 to 4 weeks
           AND pm.recommended_user_id NOT IN (
               -- Exclude users who have recent activity
               SELECT DISTINCT recommended_user_id
               FROM project_matches
               WHERE user_decision IN ('accepted', 'rejected')
-                AND user_decided_at > CURRENT_TIMESTAMP - INTERVAL '5 weeks'
+                AND user_decided_at > CURRENT_TIMESTAMP - INTERVAL '4 weeks'
           )
     )
     AND account_status = 'active';

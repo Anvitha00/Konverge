@@ -786,7 +786,10 @@ async def root():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://konverge-jmdm.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1958,6 +1961,93 @@ async def submit_rating_endpoint(rating_id: int, request: SubmitRatingRequest):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/api/leaderboard")
+async def get_leaderboard():
+    """
+    Get leaderboard data ordered by engagement scores of actual users
+    Excludes admin accounts and accounts frozen for inactivity
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute(
+        """
+        SELECT 
+            u.user_id,
+            u.name,
+            u.email,
+            u.skills,
+            u.rating,
+            u.engagement_score,
+            u.bio,
+            u.github,
+            u.linkedin,
+            -- Calculate rank based on engagement_score
+            RANK() OVER (ORDER BY u.engagement_score DESC) as rank,
+            -- Get projects completed count
+            (SELECT COUNT(*) 
+             FROM project_collaborators pc 
+             WHERE pc.user_id = u.user_id AND pc.status = 'completed') as projects_completed,
+            -- Get badges (simplified - would need actual badges table)
+            ARRAY[]::text[] as badges
+        FROM users u
+        WHERE u.account_status = 'active'
+          AND u.email != 'konverge@example.com'  -- Exclude main admin account
+          AND (
+            -- Exclude accounts frozen for more than 4 weeks without response
+            u.user_id NOT IN (
+                SELECT DISTINCT pm.recommended_user_id
+                FROM project_matches pm
+                WHERE pm.user_decision = 'pending'
+                  AND pm.created_at < CURRENT_TIMESTAMP - INTERVAL '4 weeks'  -- Changed from 5 to 4 weeks
+                  AND pm.recommended_user_id NOT IN (
+                      -- Exclude users who have recent activity
+                      SELECT DISTINCT recommended_user_id
+                      FROM project_matches
+                      WHERE user_decision IN ('accepted', 'rejected')
+                        AND user_decided_at > CURRENT_TIMESTAMP - INTERVAL '4 weeks'
+                  )
+            )
+          )
+        ORDER BY u.engagement_score DESC
+        LIMIT 50
+    """
+    )
+    
+    leaderboard_data = []
+    for row in cursor.fetchall():
+        # Generate badges based on achievements (simplified version)
+        badges = []
+        if row['projects_completed'] >= 1:
+            badges.append({"id": "first_collab", "name": "First Collaboration", "icon": "🤝", "rarity": "common"})
+        if row['projects_completed'] >= 5:
+            badges.append({"id": "collaborator", "name": "Team Player", "icon": "🤝", "rarity": "rare"})
+        if row['rating'] and row['rating'] >= 4.5:
+            badges.append({"id": "top_rated", "name": "Top Rated", "icon": "⭐", "rarity": "epic"})
+        if row['engagement_score'] and row['engagement_score'] >= 100:
+            badges.append({"id": "engaged", "name": "Super Engaged", "icon": "🔥", "rarity": "legendary"})
+        
+        leaderboard_data.append({
+            "user": {
+                "id": str(row["user_id"]),
+                "name": row["name"],
+                "email": row["email"],
+                "avatar": None,  # Would need avatar column or generate from initials
+                "skills": row["skills"] or [],
+                "badges": badges
+            },
+            "rank": row["rank"],
+            "points": row["engagement_score"] or 0,
+            "projectsCompleted": row["projects_completed"],
+            "collaborationScore": row["rating"] or 0.0
+        })
+    
+    cursor.close()
+    conn.close()
+    
+    return {"leaderboard": leaderboard_data}
 
 
 if __name__ == "__main__":

@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { mockLeaderboard } from '@/lib/api/mock-data';
 import { getInitials } from '@/lib/utils';
 import type { LeaderboardEntry } from '@/types';
+import { API_BASE } from '@/lib/api/base';
 
 const getRankIcon = (rank: number) => {
   switch (rank) {
@@ -37,13 +37,15 @@ const getRankColor = (rank: number) => {
 };
 
 export default function LeaderboardPage() {
-  const { data: leaderboard, isLoading } = useQuery({
+  const { data: leaderboard, isLoading, error } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: async (): Promise<LeaderboardEntry[]> => {
-      // Mock API call
-      return new Promise(resolve => 
-        setTimeout(() => resolve(mockLeaderboard), 500)
-      );
+      const response = await fetch(`${API_BASE}/leaderboard`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch leaderboard data');
+      }
+      const result = await response.json();
+      return result.leaderboard || [];
     },
   });
   
@@ -53,7 +55,7 @@ export default function LeaderboardPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">Leaderboard</h1>
           <p className="text-muted-foreground">
-            Top performers in the Konverge community
+            Top performers in Konverge community
           </p>
         </div>
         
@@ -75,13 +77,39 @@ export default function LeaderboardPage() {
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold">Leaderboard</h1>
+          <p className="text-red-600">
+            Failed to load leaderboard data. Please try again later.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!leaderboard || leaderboard.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold">Leaderboard</h1>
+          <p className="text-muted-foreground">
+            No active users found. Be the first to start collaborating!
+          </p>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold">Leaderboard</h1>
         <p className="text-muted-foreground">
-          Top performers in the Konverge community
+          Top performers in Konverge community - Ranked by engagement score
         </p>
       </div>
       
@@ -95,21 +123,26 @@ export default function LeaderboardPage() {
                 </div>
                 
                 <Avatar className="h-12 w-12">
-                  <AvatarImage src={entry.user.avatar} alt={entry.user.name} />
-                  <AvatarFallback>{getInitials(entry.user.name)}</AvatarFallback>
+                  {entry.user.avatar ? (
+                    <AvatarImage src={entry.user.avatar} alt={entry.user.name} />
+                  ) : (
+                    <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+                      {getInitials(entry.user.name)}
+                    </AvatarFallback>
+                  )}
                 </Avatar>
                 
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-lg">{entry.user.name}</h3>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {entry.badges.slice(0, 3).map((badge) => (
-                      <Badge key={badge.id} variant="outline" className="text-xs">
-                        {badge.icon} {badge.name}
+                    {entry.user.skills.slice(0, 3).map((skill, index) => (
+                      <Badge key={index} variant="outline" className="text-xs">
+                        {skill}
                       </Badge>
                     ))}
-                    {entry.badges.length > 3 && (
+                    {entry.user.skills.length > 3 && (
                       <Badge variant="outline" className="text-xs">
-                        +{entry.badges.length - 3} more
+                        +{entry.user.skills.length - 3} more
                       </Badge>
                     )}
                   </div>
@@ -158,26 +191,65 @@ export default function LeaderboardPage() {
           
           <Card>
             <CardHeader>
-              <CardTitle>Badge Rarities</CardTitle>
+              <CardTitle>Badge Achievements</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">🎖️ Common</span>
-                <Badge variant="outline">Basic achievements</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">🏅 Rare</span>
-                <Badge variant="secondary">Special skills</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">🏆 Epic</span>
-                <Badge variant="default">Major milestones</Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">👑 Legendary</span>
-                <Badge className="bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-400 text-white">
-                  Elite status
-                </Badge>
+            <CardContent className="space-y-6">
+              <div className="flex flex-col space-y-4">
+                {/* First Collaboration Badge */}
+                <div className="flex flex-col gap-3 p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-100">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl flex-shrink-0">🤝</span>
+                    <div className="min-w-0">
+                      <h4 className="font-semibold text-sm">First Collaboration</h4>
+                      <p className="text-xs text-muted-foreground">Complete your first project</p>
+                    </div>
+                  </div>
+                  <div className="px-3 py-2 bg-white/80 rounded-md border border-blue-200 text-center">
+                    <span className="text-xs text-blue-700 font-medium">Unlocked when you complete your first project</span>
+                  </div>
+                </div>
+                
+                {/* Team Player Badge */}
+                <div className="flex flex-col gap-3 p-4 border rounded-lg bg-gradient-to-r from-green-50 to-emerald-100">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl flex-shrink-0">🏆</span>
+                    <div className="min-w-0">
+                      <h4 className="font-semibold text-sm">Team Player</h4>
+                      <p className="text-xs text-muted-foreground">Complete 5+ collaborative projects</p>
+                    </div>
+                  </div>
+                  <div className="px-3 py-2 bg-white/80 rounded-md border border-green-200 text-center">
+                    <span className="text-xs text-green-700 font-medium">For dedicated team contributors</span>
+                  </div>
+                </div>
+                
+                {/* Top Rated Badge */}
+                <div className="flex flex-col gap-3 p-4 border rounded-lg bg-gradient-to-r from-purple-50 to-pink-100">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl flex-shrink-0">⭐</span>
+                    <div className="min-w-0">
+                      <h4 className="font-semibold text-sm">Top Rated</h4>
+                      <p className="text-xs text-muted-foreground">Maintain 4.5+ average rating</p>
+                    </div>
+                  </div>
+                  <div className="px-3 py-2 bg-white/80 rounded-md border border-purple-200 text-center">
+                    <span className="text-xs text-purple-700 font-medium">For consistently high-quality collaborators</span>
+                  </div>
+                </div>
+                
+                {/* Super Engaged Badge */}
+                <div className="flex flex-col gap-3 p-4 border rounded-lg bg-gradient-to-r from-yellow-50 via-orange-200 to-red-100">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl flex-shrink-0">🔥</span>
+                    <div className="min-w-0">
+                      <h4 className="font-semibold text-sm">Super Engaged</h4>
+                      <p className="text-xs text-muted-foreground">Earn 100+ engagement points</p>
+                    </div>
+                  </div>
+                  <div className="px-3 py-2 bg-white/80 rounded-md border border-orange-200 text-center">
+                    <span className="text-xs text-orange-700 font-medium">For most active community members</span>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
