@@ -33,6 +33,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn, getInitials } from "@/lib/utils";
 import { applyToProject } from "@/lib/api/applications";
+import { API_BASE } from "@/lib/api/base";
 
 interface Project {
   project_id: number;
@@ -68,7 +69,7 @@ export default function ProjectsPage() {
   const [rawSearch, setRawSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState<"projects" | "people">(
-    "projects"
+    "projects",
   );
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -94,7 +95,7 @@ export default function ProjectsPage() {
     queryKey: ["all-users"],
     queryFn: async () => {
       // Fetch from your existing API or create a new endpoint
-      const res = await fetch("http://localhost:8000/api/users");
+      const res = await fetch(`${API_BASE}/users`);
       if (!res.ok) {
         // Fallback: return empty array if endpoint doesn't exist
         return { users: [] };
@@ -106,7 +107,7 @@ export default function ProjectsPage() {
   // Create or get direct message thread
   const createThreadMutation = useMutation({
     mutationFn: async (targetUserId: number) => {
-      const res = await fetch("http://localhost:8000/api/threads/direct", {
+      const res = await fetch(`${API_BASE}/threads/direct`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -124,7 +125,7 @@ export default function ProjectsPage() {
     },
     onError: () => {
       toast.error(
-        "Failed to start chat. Make sure WebSocket server is running."
+        "Failed to start chat. Make sure WebSocket server is running.",
       );
     },
   });
@@ -156,8 +157,10 @@ export default function ProjectsPage() {
 
   // Filter based on search
   const filteredProjects = projects.filter((p) => {
-    const currentUserIds = [user?.user_id, user?.id]
-      .filter((value): value is number | string => value !== undefined && value !== null);
+    const currentUserIds = [user?.user_id, user?.id].filter(
+      (value): value is number | string =>
+        value !== undefined && value !== null,
+    );
     if (
       currentUserIds.length > 0 &&
       currentUserIds.some((id) => Number(p.owner_id) === Number(id))
@@ -195,10 +198,7 @@ export default function ProjectsPage() {
     createThreadMutation.mutate(userId);
   };
 
-  const accentMap: Record<
-    string,
-    { color: string; icon: JSX.Element }
-  > = {
+  const accentMap: Record<string, { color: string; icon: JSX.Element }> = {
     react: { color: "#3B82F6", icon: <Code2 className="h-3.5 w-3.5" /> },
     vue: { color: "#3B82F6", icon: <Code2 className="h-3.5 w-3.5" /> },
     fastapi: { color: "#3B82F6", icon: <Code2 className="h-3.5 w-3.5" /> },
@@ -271,9 +271,12 @@ export default function ProjectsPage() {
       <div className="mx-auto mb-6 h-32 w-32 rounded-full bg-gradient-to-br from-orange-200 to-orange-100 flex items-center justify-center">
         <Briefcase className="h-12 w-12 text-orange-500" />
       </div>
-      <h3 className="text-2xl font-semibold mb-2">No projects match your search</h3>
+      <h3 className="text-2xl font-semibold mb-2">
+        No projects match your search
+      </h3>
       <p className="text-muted-foreground max-w-md mx-auto mb-6">
-        Try different keywords or broaden your filters to discover more opportunities.
+        Try different keywords or broaden your filters to discover more
+        opportunities.
       </p>
       <Button onClick={() => setProjectFormOpen(true)} className="gap-2">
         <Plus className="h-4 w-4" />
@@ -348,15 +351,18 @@ export default function ProjectsPage() {
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filteredProjects.map((project, idx) => {
                   const firstSkill = project.required_skills?.[0];
-                  const { color } = firstSkill ? getCategoryColor(firstSkill) : { color: "#fb923c" };
+                  const { color } = firstSkill
+                    ? getCategoryColor(firstSkill)
+                    : { color: "#fb923c" };
                   const isFeatured =
-                    project.roles_available !== undefined && project.roles_available >= 4;
+                    project.roles_available !== undefined &&
+                    project.roles_available >= 4;
                   return (
                     <Card
                       key={project.project_id}
                       className={cn(
                         "relative cursor-pointer rounded-[12px] border border-black/5 bg-white/90 backdrop-blur transition-all duration-300 ease-out",
-                        "will-change-transform card-enter shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+                        "will-change-transform card-enter shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)]",
                       )}
                       style={{ animationDelay: `${idx * 0.1}s` }}
                       onClick={() => setSelectedProject(project)}
@@ -386,7 +392,7 @@ export default function ProjectsPage() {
                                 "rounded-full px-3 py-1 text-xs uppercase tracking-wide",
                                 project.status?.toLowerCase() === "open"
                                   ? "bg-orange-100 text-orange-700 status-badge-open badge-pulse"
-                                  : "bg-muted text-muted-foreground"
+                                  : "bg-muted text-muted-foreground",
                               )}
                             >
                               {project.status}
@@ -406,21 +412,26 @@ export default function ProjectsPage() {
                         </p>
 
                         <div className="flex flex-wrap gap-2">
-                          {project.required_skills?.slice(0, 3).map((skill, i) => {
-                            const { color, icon } = getCategoryColor(skill);
-                            return (
-                              <span
-                                key={i}
-                                className="inline-flex items-center gap-1 rounded-[8px] px-3 py-1 text-xs font-medium text-white transition-all duration-200 hover:scale-105"
-                                style={{ backgroundColor: color }}
-                              >
-                                {icon}
-                                {skill}
-                              </span>
-                            );
-                          })}
+                          {project.required_skills
+                            ?.slice(0, 3)
+                            .map((skill, i) => {
+                              const { color, icon } = getCategoryColor(skill);
+                              return (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center gap-1 rounded-[8px] px-3 py-1 text-xs font-medium text-white transition-all duration-200 hover:scale-105"
+                                  style={{ backgroundColor: color }}
+                                >
+                                  {icon}
+                                  {skill}
+                                </span>
+                              );
+                            })}
                           {(project.required_skills?.length || 0) > 3 && (
-                            <Badge variant="outline" className="rounded-[8px] px-3 py-1 text-xs">
+                            <Badge
+                              variant="outline"
+                              className="rounded-[8px] px-3 py-1 text-xs"
+                            >
                               +{project.required_skills.length - 3}
                             </Badge>
                           )}
@@ -434,8 +445,12 @@ export default function ProjectsPage() {
                               </AvatarFallback>
                             </Avatar>
                             <div className="text-sm">
-                              <p className="font-medium">{project.owner_name}</p>
-                              <p className="text-muted-foreground">Project Owner</p>
+                              <p className="font-medium">
+                                {project.owner_name}
+                              </p>
+                              <p className="text-muted-foreground">
+                                Project Owner
+                              </p>
                             </div>
                           </div>
                           {project.roles_available !== undefined && (
@@ -473,7 +488,10 @@ export default function ProjectsPage() {
                   <Card
                     key={person.user_id}
                     className="cursor-pointer rounded-[12px] border border-black/5 bg-white/95 backdrop-blur transition-all duration-300 ease-out card-enter shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
-                    style={{ animationDelay: `${idx * 0.1}s`, willChange: "transform" }}
+                    style={{
+                      animationDelay: `${idx * 0.1}s`,
+                      willChange: "transform",
+                    }}
                     onClick={() => setSelectedUser(person)}
                   >
                     <CardContent className="p-6 space-y-4">
@@ -516,7 +534,10 @@ export default function ProjectsPage() {
                             );
                           })}
                           {person.skills.length > 4 && (
-                            <Badge variant="outline" className="text-xs rounded-[8px]">
+                            <Badge
+                              variant="outline"
+                              className="text-xs rounded-[8px]"
+                            >
                               +{person.skills.length - 4}
                             </Badge>
                           )}
@@ -618,7 +639,9 @@ export default function ProjectsPage() {
                 <div className="flex gap-3">
                   <Button
                     className="flex-1"
-                    onClick={() => handleApplyToProject(selectedProject.project_id)}
+                    onClick={() =>
+                      handleApplyToProject(selectedProject.project_id)
+                    }
                     disabled={applyMutation.isPending}
                   >
                     {applyMutation.isPending ? "Applying..." : "Apply to Join"}
