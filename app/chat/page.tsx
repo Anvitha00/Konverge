@@ -592,15 +592,18 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
+    if (!searchParams) return;
+
     if (threads.length > 0 && !activeChatThread) {
-      const threadId = searchParams?.get("thread");
+      const threadId = searchParams.get("thread");
+
       if (threadId && threads.some((t) => t.thread_id === threadId)) {
         setActiveChatThread(threadId);
-      } else if (threads.length > 0) {
+      } else {
         setActiveChatThread(threads[0].thread_id);
       }
     }
-  }, [threads, activeChatThread, setActiveChatThread, searchParams]);
+  }, [threads, activeChatThread, searchParams]);
 
   // ISSUE #3 FIX: Clear input when switching threads
   useEffect(() => {
